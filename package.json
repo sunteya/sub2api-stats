@@ -1,0 +1,24 @@
+{
+  "name": "sub2api-stats",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "pnpm run test:db",
+    "test:db": "tsx --test postgres.connection.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "packageManager": "pnpm@10.20.0",
+  "dependencies": {
+    "cli-table3": "^0.6.5",
+    "dotenv": "^17.3.1",
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0"
+  },
+  "optionalDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/pg": "^8.20.0"
+  }
+}
