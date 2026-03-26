@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "pnpm run test:db",
-    "test:db": "tsx --test postgres.connection.test.ts"
+    "test:db": "tsx --test postgres.connection.test.ts",
+    "request:error": "tsx show-request-error.ts"
   },
   "keywords": [],
   "author": "",

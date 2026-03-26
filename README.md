@@ -4,11 +4,19 @@ A small TypeScript tool for checking account first-token stats from PostgreSQL.
 
 It reads the latest 100 requests for each active account and prints an ASCII table with the account name, request count, average first-token time, and latest request time.
 
+It also includes a request lookup script that shows which account handled a given `request_id` and the specific error captured for that request.
+
 ## Local usage
 
 ```bash
 pnpm install
 pnpm tsx list-account-first-token-stats.ts
+```
+
+To inspect a single request:
+
+```bash
+pnpm request:error -- 908b32d6-1b13-44b0-9065-795d24deaec3
 ```
 
 Set `DATABASE_URL` in your shell before running the script.
