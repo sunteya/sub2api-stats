@@ -1,8 +1,10 @@
 # sub2api-stats
 
-A small TypeScript tool for checking account first-token stats from PostgreSQL.
+A small TypeScript tool for checking account first-token stats and request error rates from PostgreSQL.
 
 It reads the latest 100 requests for each active account and prints an ASCII table with the account name, request count, average first-token time, and latest request time.
+
+It can also read all requests for each active account and print request count, error count, and error rate.
 
 It also includes a request lookup script that shows which account handled a given `request_id` and the specific error captured for that request.
 
@@ -11,11 +13,15 @@ It also includes a request lookup script that shows which account handled a give
 ```bash
 pnpm install
 pnpm tsx list-account-first-token-stats.ts
+pnpm account:error-rate
 ```
 
-To inspect a single request:
+To inspect a single request with `show-request-error.ts`:
 
 ```bash
+pnpm tsx show-request-error.ts 908b32d6-1b13-44b0-9065-795d24deaec3
+
+# or use the package script
 pnpm request:error -- 908b32d6-1b13-44b0-9065-795d24deaec3
 ```
 

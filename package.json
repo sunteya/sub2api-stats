@@ -6,6 +6,7 @@
   "scripts": {
     "test": "pnpm run test:db",
     "test:db": "tsx --test postgres.connection.test.ts",
+    "account:error-rate": "tsx list-account-error-rate-stats.ts",
     "request:error": "tsx show-request-error.ts"
   },
   "keywords": [],
