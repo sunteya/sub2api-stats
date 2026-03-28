@@ -5,11 +5,15 @@ import { Client } from 'pg'
 type AccountErrorRateStatsRow = {
   id: string
   account_name: string
+  status: string | null
   request_count: string
   error_count: string
   error_rate: string | null
   latest_request_at: Date | string | null
 }
+
+const ANSI_GREEN = '\x1b[32m'
+const ANSI_RESET = '\x1b[0m'
 
 const query = `
 WITH ranked_usage AS (
@@ -82,6 +86,7 @@ merged_requests AS (
 SELECT
   a.id AS id,
   a.name AS account_name,
+  a.status AS status,
   COUNT(*) AS request_count,
   COUNT(*) FILTER (WHERE r.has_error) AS error_count,
   ROUND(
@@ -92,7 +97,7 @@ SELECT
 FROM accounts a
 JOIN merged_requests r ON r.account_id = a.id
 WHERE a.deleted_at IS NULL
-GROUP BY a.id, a.name
+GROUP BY a.id, a.name, a.status
 ORDER BY a.id
 `
 
@@ -134,6 +139,34 @@ function formatRate(value: string | null): string {
   return `${value}%`
 }
 
+function isEnabledStatus(value: string | null): boolean {
+  return value === 'active'
+}
+
+function formatStatus(value: string | null): string {
+  if (!value) {
+    return ''
+  }
+
+  if (value === 'active') {
+    return 'enabled'
+  }
+
+  if (value === 'inactive') {
+    return 'disabled'
+  }
+
+  return value
+}
+
+function colorizeRow(values: string[], enabled: boolean): string[] {
+  if (!enabled) {
+    return values
+  }
+
+  return values.map((value) => `${ANSI_GREEN}${value}${ANSI_RESET}`)
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is not set')
@@ -149,8 +182,8 @@ async function main() {
 
     const result = await client.query<AccountErrorRateStatsRow>(query)
     const table = new Table({
-      head: ['id', 'account_name', 'request_count', 'error_count', 'error_rate', 'latest_request_at'],
-      colAligns: ['right', 'left', 'right', 'right', 'right', 'left'],
+      head: ['id', 'account_name', 'status', 'request_count', 'error_count', 'error_rate', 'latest_request_at'],
+      colAligns: ['right', 'left', 'left', 'right', 'right', 'right', 'left'],
       chars: asciiTableChars,
       style: {
         head: [],
@@ -160,14 +193,20 @@ async function main() {
     })
 
     table.push(
-      ...result.rows.map((row) => [
-        row.id,
-        row.account_name,
-        row.request_count,
-        row.error_count,
-        formatRate(row.error_rate),
-        formatTimestamp(row.latest_request_at),
-      ]),
+      ...result.rows.map((row) =>
+        colorizeRow(
+          [
+            row.id,
+            row.account_name,
+            formatStatus(row.status),
+            row.request_count,
+            row.error_count,
+            formatRate(row.error_rate),
+            formatTimestamp(row.latest_request_at),
+          ],
+          isEnabledStatus(row.status),
+        ),
+      ),
     )
 
     console.log(table.toString())

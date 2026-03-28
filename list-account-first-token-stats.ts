@@ -5,10 +5,14 @@ import { Client } from 'pg'
 type AccountFirstTokenStatsRow = {
   id: string
   account_name: string
+  status: string | null
   request_count: string
   avg_first_token: string | null
   latest_request_at: Date | string | null
 }
+
+const ANSI_GREEN = '\x1b[32m'
+const ANSI_RESET = '\x1b[0m'
 
 const query = `
 WITH ranked_usage AS (
@@ -36,13 +40,14 @@ last_100 AS (
 SELECT
   a.id AS id,
   a.name AS account_name,
+  a.status AS status,
   COUNT(*) AS request_count,
   ROUND(AVG(l.first_token_ms)::numeric / 1000, 1) AS avg_first_token,
   MAX(l.created_at) AS latest_request_at
 FROM accounts a
 JOIN last_100 l ON l.account_id = a.id
 WHERE a.deleted_at IS NULL
-GROUP BY a.id, a.name
+GROUP BY a.id, a.name, a.status
 ORDER BY a.id
 `
 
@@ -76,6 +81,34 @@ function formatTimestamp(value: Date | string | null): string {
   return value
 }
 
+function isEnabledStatus(value: string | null): boolean {
+  return value === 'active'
+}
+
+function formatStatus(value: string | null): string {
+  if (!value) {
+    return ''
+  }
+
+  if (value === 'active') {
+    return 'enabled'
+  }
+
+  if (value === 'inactive') {
+    return 'disabled'
+  }
+
+  return value
+}
+
+function colorizeRow(values: string[], enabled: boolean): string[] {
+  if (!enabled) {
+    return values
+  }
+
+  return values.map((value) => `${ANSI_GREEN}${value}${ANSI_RESET}`)
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is not set')
@@ -91,8 +124,8 @@ async function main() {
 
     const result = await client.query<AccountFirstTokenStatsRow>(query)
     const table = new Table({
-      head: ['id', 'account_name', 'request_count', 'avg_first_token', 'latest_request_at'],
-      colAligns: ['right', 'left', 'right', 'right', 'left'],
+      head: ['id', 'account_name', 'status', 'request_count', 'avg_first_token', 'latest_request_at'],
+      colAligns: ['right', 'left', 'left', 'right', 'right', 'left'],
       chars: asciiTableChars,
       style: {
         head: [],
@@ -102,13 +135,19 @@ async function main() {
     })
 
     table.push(
-      ...result.rows.map((row) => [
-        row.id,
-        row.account_name,
-        row.request_count,
-        row.avg_first_token ?? '',
-        formatTimestamp(row.latest_request_at),
-      ]),
+      ...result.rows.map((row) =>
+        colorizeRow(
+          [
+            row.id,
+            row.account_name,
+            formatStatus(row.status),
+            row.request_count,
+            row.avg_first_token ?? '',
+            formatTimestamp(row.latest_request_at),
+          ],
+          isEnabledStatus(row.status),
+        ),
+      ),
     )
 
     console.log(table.toString())
