@@ -54,6 +54,8 @@ ranked_errors AS (
     request_id,
     account_id,
     created_at,
+    status_code,
+    upstream_status_code,
     id,
     ROW_NUMBER() OVER (
       PARTITION BY CASE
@@ -70,7 +72,9 @@ latest_errors AS (
     request_key,
     request_id,
     account_id,
-    created_at
+    created_at,
+    status_code,
+    upstream_status_code
   FROM ranked_errors
   WHERE rn = 1
 ),
@@ -79,7 +83,11 @@ merged_requests AS (
     COALESCE(u.request_key, e.request_key) AS request_key,
     COALESCE(u.account_id, e.account_id) AS account_id,
     COALESCE(GREATEST(u.created_at, e.created_at), u.created_at, e.created_at) AS latest_request_at,
-    (e.request_key IS NOT NULL) AS has_error
+    (
+      e.request_key IS NOT NULL
+      AND e.status_code IS DISTINCT FROM 403
+      AND e.upstream_status_code IS DISTINCT FROM 403
+    ) AS has_error
   FROM latest_usage u
   FULL OUTER JOIN latest_errors e ON u.request_key = e.request_key
 )

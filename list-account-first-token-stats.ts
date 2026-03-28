@@ -15,39 +15,61 @@ const ANSI_GREEN = '\x1b[32m'
 const ANSI_RESET = '\x1b[0m'
 
 const query = `
-WITH ranked_usage AS (
+WITH base_usage AS (
   SELECT
     account_id,
     first_token_ms,
     created_at,
-    id,
-    ROW_NUMBER() OVER (
-      PARTITION BY account_id
-      ORDER BY created_at DESC, id DESC
-    ) AS rn
+    id
   FROM usage_logs
   WHERE account_id IS NOT NULL
     AND first_token_ms IS NOT NULL
 ),
-last_100 AS (
+ranked_usage AS (
   SELECT
     account_id,
     first_token_ms,
-    created_at
+    ROW_NUMBER() OVER (
+      PARTITION BY account_id
+      ORDER BY first_token_ms ASC, created_at DESC, id DESC
+    ) AS value_rn,
+    COUNT(*) OVER (PARTITION BY account_id) AS total_count
+  FROM base_usage
+),
+trimmed_usage AS (
+  SELECT
+    account_id,
+    first_token_ms
   FROM ranked_usage
-  WHERE rn <= 100
+  WHERE value_rn > FLOOR(total_count * 0.1)::bigint
+    AND value_rn <= total_count - FLOOR(total_count * 0.1)::bigint
+),
+trimmed_stats AS (
+  SELECT
+    account_id,
+    ROUND(AVG(first_token_ms)::numeric / 1000, 1) AS avg_first_token
+  FROM trimmed_usage
+  GROUP BY account_id
+),
+account_totals AS (
+  SELECT
+    account_id,
+    COUNT(*) AS request_count,
+    MAX(created_at) AS latest_request_at
+  FROM base_usage
+  GROUP BY account_id
 )
 SELECT
   a.id AS id,
   a.name AS account_name,
   a.status AS status,
-  COUNT(*) AS request_count,
-  ROUND(AVG(l.first_token_ms)::numeric / 1000, 1) AS avg_first_token,
-  MAX(l.created_at) AS latest_request_at
+  t.request_count AS request_count,
+  s.avg_first_token AS avg_first_token,
+  t.latest_request_at AS latest_request_at
 FROM accounts a
-JOIN last_100 l ON l.account_id = a.id
+JOIN account_totals t ON t.account_id = a.id
+JOIN trimmed_stats s ON s.account_id = a.id
 WHERE a.deleted_at IS NULL
-GROUP BY a.id, a.name, a.status
 ORDER BY a.id
 `
 

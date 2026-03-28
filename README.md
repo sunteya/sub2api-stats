@@ -2,7 +2,7 @@
 
 A small TypeScript tool for checking account first-token stats and request error rates from PostgreSQL.
 
-It reads the latest 100 requests for each active account and prints an ASCII table with the account name, request count, average first-token time, and latest request time.
+It reads all requests for each account, drops the fastest 10% and slowest 10% of first-token samples, and prints an ASCII table with the account name, total request count, trimmed average first-token time, and latest request time.
 
 It can also read all requests for each active account and print request count, error count, and error rate.
 
