@@ -1,10 +1,10 @@
 # sub2api-stats
 
-A small TypeScript tool for checking account first-token stats and request error rates from PostgreSQL.
+A small TypeScript tool for checking account stats from PostgreSQL.
 
-It reads all requests for each account, drops the fastest 10% and slowest 10% of first-token samples, and prints an ASCII table with the account name, total request count, trimmed average first-token time, and latest request time.
+It reads account traffic, drops the fastest 10% and slowest 10% of first-token samples, and prints an ASCII table with the account name, total request count, trimmed average first-token time, 10-minute availability, and latest request time.
 
-It can also read all requests for each active account and print request count, error count, and error rate.
+Availability is calculated from 10-minute windows that contain requests. A window is counted as unavailable when 10% or more of the requests in that window fail.
 
 It also includes a request lookup script that shows which account handled a given `request_id` and the specific error captured for that request.
 
@@ -12,8 +12,7 @@ It also includes a request lookup script that shows which account handled a give
 
 ```bash
 pnpm install
-pnpm tsx list-account-first-token-stats.ts
-pnpm account:error-rate
+pnpm account:stats
 ```
 
 To inspect a single request with `show-request-error.ts`:
@@ -64,5 +63,5 @@ stats:
 Then run:
 
 ```bash
-docker compose exec stats pnpm tsx list-account-first-token-stats.ts
+docker compose exec stats pnpm account:stats
 ```
