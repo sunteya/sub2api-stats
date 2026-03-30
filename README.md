@@ -4,7 +4,7 @@ A small TypeScript tool for checking account stats from PostgreSQL.
 
 It reads account traffic, drops the fastest 10% and slowest 10% of first-token samples, and prints an ASCII table with the account name, total request count, trimmed average first-token time, 10-minute availability, and latest request time.
 
-Availability is calculated from 10-minute windows that contain requests. A window is counted as unavailable when 10% or more of the requests in that window fail.
+Availability is calculated from 10-minute windows that contain requests. The window counts merge request/error logs with account-scoped system logs, and warning-level system log entries are treated as failed requests. A window is counted as unavailable when 10% or more of the merged requests in that window fail.
 
 It also includes a request lookup script that shows which account handled a given `request_id` and the specific error captured for that request.
 

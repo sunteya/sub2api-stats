@@ -129,38 +129,109 @@ latest_errors AS (
   FROM ranked_errors
   WHERE rn = 1
 ),
-merged_requests AS (
+app_requests AS (
   SELECT
     COALESCE(u.request_key, e.request_key) AS request_key,
     COALESCE(u.account_id, e.account_id) AS account_id,
     COALESCE(GREATEST(u.created_at, e.created_at), u.created_at, e.created_at) AS latest_request_at,
     (
       e.request_key IS NOT NULL
+      AND (
+        e.status_code IS NULL
+        OR e.status_code < 200
+        OR e.status_code >= 400
+      )
+      AND e.status_code IS DISTINCT FROM 401
       AND e.status_code IS DISTINCT FROM 403
+      AND e.upstream_status_code IS DISTINCT FROM 401
       AND e.upstream_status_code IS DISTINCT FROM 403
       AND NOT e.is_model_not_found
     ) AS has_error
   FROM latest_usage u
   FULL OUTER JOIN latest_errors e ON u.request_key = e.request_key
 ),
+system_log_events AS (
+  SELECT
+    CASE
+      WHEN request_id IS NOT NULL THEN 'request:' || request_id
+      WHEN client_request_id IS NOT NULL THEN 'client-request:' || client_request_id
+      ELSE 'system-log:' || id::text
+    END AS request_key,
+    account_id,
+    created_at,
+    (
+      (
+        component = 'http.access'
+        AND extra ? 'status_code'
+        AND extra ->> 'status_code' ~ '^[0-9]+$'
+        AND (extra ->> 'status_code')::int >= 400
+        AND (extra ->> 'status_code')::int NOT IN (401, 403)
+      )
+      OR (
+        level = 'warn'
+        AND (request_id IS NOT NULL OR client_request_id IS NOT NULL)
+        AND component = 'handler.openai_gateway.responses'
+        AND message = 'openai.forward_failed'
+      )
+    ) AS has_error
+  FROM ops_system_logs
+  WHERE account_id IS NOT NULL
+    AND (
+      component = 'http.access'
+      OR (
+        level = 'warn'
+        AND (request_id IS NOT NULL OR client_request_id IS NOT NULL)
+        AND component = 'handler.openai_gateway.responses'
+        AND message = 'openai.forward_failed'
+      )
+    )
+),
+system_requests AS (
+  SELECT
+    request_key,
+    account_id,
+    MAX(created_at) AS latest_request_at,
+    BOOL_OR(has_error) AS has_error
+  FROM system_log_events
+  GROUP BY request_key, account_id
+),
+combined_requests AS (
+  SELECT
+    COALESCE(a.request_key, s.request_key) AS request_key,
+    COALESCE(a.account_id, s.account_id) AS account_id,
+    COALESCE(GREATEST(a.latest_request_at, s.latest_request_at), a.latest_request_at, s.latest_request_at) AS latest_request_at,
+    COALESCE(a.has_error, false) OR COALESCE(s.has_error, false) AS has_error
+  FROM app_requests a
+  FULL OUTER JOIN system_requests s
+    ON a.request_key = s.request_key
+   AND a.account_id = s.account_id
+),
 window_stats AS (
   SELECT
     account_id,
-    to_timestamp(floor(extract(epoch from latest_request_at) / 600) * 600) AS window_start,
+    window_start,
     COUNT(*) FILTER (WHERE has_error) AS error_request_count,
     COUNT(*) AS request_count,
+    MAX(latest_request_at) AS latest_request_at,
     (
       COUNT(*) FILTER (WHERE has_error)::numeric / NULLIF(COUNT(*), 0) >= 0.1
     ) AS is_unavailable
-  FROM merged_requests
-  GROUP BY account_id, to_timestamp(floor(extract(epoch from latest_request_at) / 600) * 600)
+  FROM (
+    SELECT
+      account_id,
+      to_timestamp(floor(extract(epoch from latest_request_at) / 600) * 600) AS window_start,
+      latest_request_at,
+      has_error
+    FROM combined_requests
+  ) deduped_requests
+  GROUP BY account_id, window_start
 ),
 request_totals AS (
   SELECT
     account_id,
-    COUNT(*) AS request_count,
+    SUM(request_count) AS request_count,
     MAX(latest_request_at) AS latest_request_at
-  FROM merged_requests
+  FROM window_stats
   GROUP BY account_id
 ),
 availability_stats AS (
