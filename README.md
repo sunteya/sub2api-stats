@@ -28,6 +28,16 @@ Set `DATABASE_URL` in your shell before running the script.
 
 Using `.env` is optional and mainly helpful for deploy or local debugging. You can refer to `.env.example` if needed.
 
+## Web page
+
+Start the Nuxt web server locally with:
+
+```bash
+pnpm dev
+```
+
+Then open `http://localhost:3000` to see the Hello World page. The page source is `app/pages/index.vue`.
+
 You can start PostgreSQL locally with:
 
 ```bash

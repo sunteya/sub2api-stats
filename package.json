@@ -4,6 +4,10 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "dev": "nuxt dev",
+    "build": "nuxt build",
+    "preview": "nuxt preview",
+    "start": "node .output/server/index.mjs",
     "test": "pnpm run test:db",
     "test:db": "tsx --test postgres.connection.test.ts",
     "account:stats": "tsx list-account-stats.ts",
@@ -16,8 +20,11 @@
   "dependencies": {
     "cli-table3": "^0.6.5",
     "dotenv": "^17.3.1",
+    "nuxt": "^4.4.8",
     "pg": "^8.20.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "vue": "^3.5.25",
+    "vue-router": "^4.6.4"
   },
   "optionalDependencies": {
     "@types/node": "^25.5.0",
