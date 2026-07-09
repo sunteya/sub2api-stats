@@ -36,7 +36,16 @@ Start the Nuxt web server locally with:
 pnpm dev
 ```
 
-Then open `http://localhost:3000` to see the Hello World page. The page source is `app/pages/index.vue`.
+Then open `http://localhost:3000` to see the user list. The page source is `app/pages/index.vue`.
+
+Daily amounts are read from `daily-amounts.yml` in the project root. The file uses email addresses as keys and plain numbers as values:
+
+```yaml
+zhunm@ll100.com: 180
+zhuyl@ll100.com: 120
+```
+
+The user list displays amounts as `balance / daily amount`, such as `18 / 180`. Use the per-user `设置每日金额` button in the user list to edit one user's daily amount.
 
 You can start PostgreSQL locally with:
 

@@ -1,3 +1,5 @@
+import { readDailyAmounts } from '../utils/daily-amounts'
+
 type AdminUser = {
   id: number
   email: string
@@ -15,12 +17,20 @@ type AdminUser = {
   notes?: string | null
 }
 
+type AdminUserWithDailyAmount = AdminUser & {
+  daily_amount: number | null
+}
+
 type PaginatedUsers = {
-  items: AdminUser[]
+  items: AdminUserWithDailyAmount[]
   total: number
   page: number
   page_size: number
   pages: number
+}
+
+type Sub2apiPaginatedUsers = Omit<PaginatedUsers, 'items'> & {
+  items: AdminUser[]
 }
 
 type Sub2apiEnvelope<T> = {
@@ -78,7 +88,7 @@ export default defineEventHandler(async (event): Promise<PaginatedUsers> => {
   }
 
   try {
-    const response = await $fetch<Sub2apiEnvelope<PaginatedUsers>>('/api/v1/admin/users', {
+    const response = await $fetch<Sub2apiEnvelope<Sub2apiPaginatedUsers>>('/api/v1/admin/users', {
       baseURL: baseUrl,
       headers: {
         accept: 'application/json',
@@ -94,7 +104,15 @@ export default defineEventHandler(async (event): Promise<PaginatedUsers> => {
       })
     }
 
-    return response.data
+    const dailyAmounts = await readDailyAmounts()
+
+    return {
+      ...response.data,
+      items: response.data.items.map((user) => ({
+        ...user,
+        daily_amount: dailyAmounts[user.email.toLowerCase()] ?? null,
+      })),
+    }
   } catch (error) {
     if (error && typeof error === 'object' && 'statusCode' in error) {
       throw error

@@ -3,3 +3,4 @@
 /.output/
 /postgres_data/
 .env
+/daily-amounts.yml

@@ -5,6 +5,7 @@ type User = {
   username: string | null
   role: string
   balance: number
+  daily_amount: number | null
   concurrency: number
   current_concurrency?: number | null
   rpm_limit?: number | null
@@ -36,6 +37,10 @@ const users = computed(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
 const pages = computed(() => data.value?.pages || 1)
 
+onMounted(() => {
+  refresh()
+})
+
 function formatDate(value?: string | null): string {
   if (!value) {
     return '-'
@@ -59,6 +64,17 @@ function formatNumber(value?: number | null): string {
   }).format(value)
 }
 
+function formatDailyAmount(value?: number | null): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  return new Intl.NumberFormat('zh-CN', {
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(value)
+}
+
 function previousPage() {
   if (page.value > 1) {
     page.value -= 1
@@ -79,9 +95,11 @@ function nextPage() {
         <p class="eyebrow">Sub2API Admin</p>
         <h1>用户列表</h1>
       </div>
-      <button class="button" type="button" :disabled="pending" @click="refresh()">
-        {{ pending ? '加载中' : '刷新' }}
-      </button>
+      <div class="actions">
+        <button class="button" type="button" :disabled="pending" @click="refresh()">
+          {{ pending ? '加载中' : '刷新' }}
+        </button>
+      </div>
     </section>
 
     <section class="summary" aria-label="用户列表统计">
@@ -115,11 +133,12 @@ function nextPage() {
               <th>用户名</th>
               <th>角色</th>
               <th>状态</th>
-              <th>余额</th>
+              <th>余额 / 每日金额</th>
               <th>并发</th>
               <th>RPM</th>
               <th>最近使用</th>
               <th>创建时间</th>
+              <th>操作</th>
             </tr>
           </thead>
           <tbody>
@@ -131,13 +150,20 @@ function nextPage() {
               <td>
                 <span class="badge" :class="user.status">{{ user.status }}</span>
               </td>
-              <td class="number">{{ formatNumber(user.balance) }}</td>
+              <td>
+                <span class="amount-display">{{ formatNumber(user.balance) }} / {{ formatDailyAmount(user.daily_amount) }}</span>
+              </td>
               <td class="number">
                 {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
               </td>
               <td class="number">{{ user.rpm_limit ?? '-' }}</td>
               <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
               <td>{{ formatDate(user.created_at) }}</td>
+              <td>
+                <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
+                  设置每日金额
+                </NuxtLink>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -190,6 +216,9 @@ h1 {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-width: 88px;
   border: 1px solid #2563eb;
   border-radius: 6px;
@@ -212,6 +241,19 @@ h1 {
   border-color: #cbd5e1;
   background: #ffffff;
   color: #1f2937;
+  text-decoration: none;
+}
+
+.button.compact {
+  min-width: 108px;
+  padding: 7px 10px;
+  font-size: 0.82rem;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .summary {
@@ -287,6 +329,11 @@ tbody tr:last-child td {
   text-align: right;
 }
 
+.amount-display {
+  color: #1f2937;
+  font-variant-numeric: tabular-nums;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -338,6 +385,15 @@ tbody tr:last-child td {
   .toolbar {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .actions {
+    width: 100%;
+  }
+
+  .actions .button {
+    flex: 1;
+    text-align: center;
   }
 
   .summary {
