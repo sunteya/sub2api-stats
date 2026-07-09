@@ -38,20 +38,31 @@ const pageSize = 20
 const resettingEmail = ref('')
 const resetMessage = ref('')
 const resetError = ref('')
+const isAdminAuthenticated = useState<boolean>('admin-authenticated', () => false)
 
 const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
   query: {
     page,
     page_size: pageSize,
   },
+  immediate: false,
+  watch: false,
 })
 
 const users = computed(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
 const pages = computed(() => data.value?.pages || 1)
 
-onMounted(() => {
-  refresh()
+watch(isAdminAuthenticated, (authenticated) => {
+  if (authenticated) {
+    refresh()
+  }
+}, { immediate: true })
+
+watch(page, () => {
+  if (isAdminAuthenticated.value) {
+    refresh()
+  }
 })
 
 function formatDate(value?: string | null): string {
@@ -146,109 +157,111 @@ async function resetDailyBalance(user: User) {
 </script>
 
 <template>
-  <main class="page">
-    <section class="toolbar">
-      <div>
-        <p class="eyebrow">Sub2API Admin</p>
-        <h1>用户列表</h1>
-      </div>
-      <div class="actions">
-        <button class="button" type="button" :disabled="pending" @click="refresh()">
-          {{ pending ? '加载中' : '刷新' }}
+  <AdminGate>
+    <main class="page">
+      <section class="toolbar">
+        <div>
+          <p class="eyebrow">Sub2API Admin</p>
+          <h1>用户列表</h1>
+        </div>
+        <div class="actions">
+          <button class="button" type="button" :disabled="pending" @click="refresh()">
+            {{ pending ? '加载中' : '刷新' }}
+          </button>
+        </div>
+      </section>
+
+      <section class="summary" aria-label="用户列表统计">
+        <div>
+          <span>总用户</span>
+          <strong>{{ total }}</strong>
+        </div>
+        <div>
+          <span>当前页</span>
+          <strong>{{ page }} / {{ pages }}</strong>
+        </div>
+        <div>
+          <span>每页</span>
+          <strong>{{ pageSize }}</strong>
+        </div>
+      </section>
+
+      <section class="table-panel">
+        <p v-if="resetError" class="status error">{{ resetError }}</p>
+        <p v-if="resetMessage" class="status success">{{ resetMessage }}</p>
+        <p v-if="error" class="status error">
+          用户列表加载失败：{{ error.statusMessage || error.message }}
+        </p>
+        <p v-else-if="pending && !data" class="status">正在加载用户列表...</p>
+        <p v-else-if="users.length === 0" class="status">暂无用户。</p>
+
+        <div v-else class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>邮箱</th>
+                <th>用户名</th>
+                <th>角色</th>
+                <th>状态</th>
+                <th>余额 / 每日金额</th>
+                <th>并发</th>
+                <th>RPM</th>
+                <th>最近使用</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="user in users" :key="user.id">
+                <td class="mono">{{ user.id }}</td>
+                <td>{{ user.email }}</td>
+                <td>{{ user.username || '-' }}</td>
+                <td>{{ user.role }}</td>
+                <td>
+                  <span class="badge" :class="user.status">{{ user.status }}</span>
+                </td>
+                <td>
+                  <span class="amount-display">{{ formatNumber(user.balance) }} / {{ formatDailyAmount(user.daily_amount) }}</span>
+                </td>
+                <td class="number">
+                  {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
+                </td>
+                <td class="number">{{ user.rpm_limit ?? '-' }}</td>
+                <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
+                <td>{{ formatDate(user.created_at) }}</td>
+                <td>
+                  <div class="row-actions">
+                    <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
+                      设置每日金额
+                    </NuxtLink>
+                    <button
+                      class="button compact"
+                      type="button"
+                      :disabled="pending || resettingEmail === user.email || user.daily_amount === null"
+                      @click="resetDailyBalance(user)"
+                    >
+                      {{ resettingEmail === user.email ? '重置中' : '重置每日额度' }}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <nav class="pagination" aria-label="用户列表分页">
+        <button class="button secondary" type="button" :disabled="page <= 1 || pending" @click="previousPage">
+          上一页
         </button>
-      </div>
-    </section>
-
-    <section class="summary" aria-label="用户列表统计">
-      <div>
-        <span>总用户</span>
-        <strong>{{ total }}</strong>
-      </div>
-      <div>
-        <span>当前页</span>
-        <strong>{{ page }} / {{ pages }}</strong>
-      </div>
-      <div>
-        <span>每页</span>
-        <strong>{{ pageSize }}</strong>
-      </div>
-    </section>
-
-    <section class="table-panel">
-      <p v-if="resetError" class="status error">{{ resetError }}</p>
-      <p v-if="resetMessage" class="status success">{{ resetMessage }}</p>
-      <p v-if="error" class="status error">
-        用户列表加载失败：{{ error.statusMessage || error.message }}
-      </p>
-      <p v-else-if="pending && !data" class="status">正在加载用户列表...</p>
-      <p v-else-if="users.length === 0" class="status">暂无用户。</p>
-
-      <div v-else class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>邮箱</th>
-              <th>用户名</th>
-              <th>角色</th>
-              <th>状态</th>
-              <th>余额 / 每日金额</th>
-              <th>并发</th>
-              <th>RPM</th>
-              <th>最近使用</th>
-              <th>创建时间</th>
-              <th>操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="user in users" :key="user.id">
-              <td class="mono">{{ user.id }}</td>
-              <td>{{ user.email }}</td>
-              <td>{{ user.username || '-' }}</td>
-              <td>{{ user.role }}</td>
-              <td>
-                <span class="badge" :class="user.status">{{ user.status }}</span>
-              </td>
-              <td>
-                <span class="amount-display">{{ formatNumber(user.balance) }} / {{ formatDailyAmount(user.daily_amount) }}</span>
-              </td>
-              <td class="number">
-                {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
-              </td>
-              <td class="number">{{ user.rpm_limit ?? '-' }}</td>
-              <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
-              <td>{{ formatDate(user.created_at) }}</td>
-              <td>
-                <div class="row-actions">
-                  <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
-                    设置每日金额
-                  </NuxtLink>
-                  <button
-                    class="button compact"
-                    type="button"
-                    :disabled="pending || resettingEmail === user.email || user.daily_amount === null"
-                    @click="resetDailyBalance(user)"
-                  >
-                    {{ resettingEmail === user.email ? '重置中' : '重置每日额度' }}
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <nav class="pagination" aria-label="用户列表分页">
-      <button class="button secondary" type="button" :disabled="page <= 1 || pending" @click="previousPage">
-        上一页
-      </button>
-      <span>第 {{ page }} 页，共 {{ pages }} 页</span>
-      <button class="button secondary" type="button" :disabled="page >= pages || pending" @click="nextPage">
-        下一页
-      </button>
-    </nav>
-  </main>
+        <span>第 {{ page }} 页，共 {{ pages }} 页</span>
+        <button class="button secondary" type="button" :disabled="page >= pages || pending" @click="nextPage">
+          下一页
+        </button>
+      </nav>
+    </main>
+  </AdminGate>
 </template>
 
 <style scoped>

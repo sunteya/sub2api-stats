@@ -1,6 +1,9 @@
 import { updateDailyAmounts } from '../utils/settings'
+import { requireAdmin } from '../utils/admin-auth'
 
 export default defineEventHandler(async (event) => {
+  requireAdmin(event)
+
   const body = await readBody<{ amounts?: Record<string, unknown> }>(event)
 
   if (!body || !body.amounts || typeof body.amounts !== 'object' || Array.isArray(body.amounts)) {

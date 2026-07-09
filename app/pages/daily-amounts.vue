@@ -22,6 +22,7 @@ const savedDailyAmount = ref<number | null | undefined>()
 const saving = ref(false)
 const saveMessage = ref('')
 const saveError = ref('')
+const isAdminAuthenticated = useState<boolean>('admin-authenticated', () => false)
 
 const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
   query: {
@@ -29,6 +30,8 @@ const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/us
     page_size: 100,
     search: selectedEmail,
   },
+  immediate: false,
+  watch: false,
 })
 
 const selectedUser = computed(() => {
@@ -52,6 +55,12 @@ const currentDailyAmount = computed(() => {
 watch(selectedUser, (user) => {
   savedDailyAmount.value = undefined
   amountDraft.value = formatAmountInput(user?.daily_amount)
+}, { immediate: true })
+
+watch([isAdminAuthenticated, selectedEmail], ([authenticated]) => {
+  if (authenticated) {
+    refresh()
+  }
 }, { immediate: true })
 
 function formatNumber(value?: number | null): string {
@@ -140,61 +149,63 @@ async function saveDailyAmount() {
 </script>
 
 <template>
-  <main class="page">
-    <section class="toolbar">
-      <div>
-        <p class="eyebrow">Sub2API Admin</p>
-        <h1>设置每日金额</h1>
-      </div>
-      <NuxtLink class="button secondary" to="/">返回用户列表</NuxtLink>
-    </section>
-
-    <section class="panel">
-      <p v-if="saveError" class="status error">{{ saveError }}</p>
-      <p v-if="saveMessage" class="status success">{{ saveMessage }}</p>
-      <p v-if="!selectedEmail" class="status">请从用户列表选择一个用户。</p>
-      <p v-else-if="error" class="status error">
-        用户加载失败：{{ error.statusMessage || error.message }}
-      </p>
-      <p v-else-if="pending && !data" class="status">正在加载用户...</p>
-      <p v-else-if="!selectedUser" class="status">没有找到 {{ selectedEmail }}。</p>
-
-      <form v-else class="form" novalidate @submit.prevent="saveDailyAmount">
-        <div class="user-summary">
-          <div>
-            <span>邮箱</span>
-            <strong>{{ selectedUser.email }}</strong>
-          </div>
-          <div>
-            <span>用户名</span>
-            <strong>{{ selectedUser.username || '-' }}</strong>
-          </div>
-          <div>
-            <span>余额 / 每日金额</span>
-            <strong>{{ formatNumber(selectedUser.balance) }} / {{ formatDailyAmount(currentDailyAmount) }}</strong>
-          </div>
+  <AdminGate>
+    <main class="page">
+      <section class="toolbar">
+        <div>
+          <p class="eyebrow">Sub2API Admin</p>
+          <h1>设置每日金额</h1>
         </div>
+        <NuxtLink class="button secondary" to="/">返回用户列表</NuxtLink>
+      </section>
 
-        <label class="field">
-          <span>每日金额</span>
-          <input
-            v-model="amountDraft"
-            class="amount-input"
-            type="number"
-            min="0"
-            step="0.1"
-            placeholder="空为不设置"
-          >
-        </label>
+      <section class="panel">
+        <p v-if="saveError" class="status error">{{ saveError }}</p>
+        <p v-if="saveMessage" class="status success">{{ saveMessage }}</p>
+        <p v-if="!selectedEmail" class="status">请从用户列表选择一个用户。</p>
+        <p v-else-if="error" class="status error">
+          用户加载失败：{{ error.statusMessage || error.message }}
+        </p>
+        <p v-else-if="pending && !data" class="status">正在加载用户...</p>
+        <p v-else-if="!selectedUser" class="status">没有找到 {{ selectedEmail }}。</p>
 
-        <div class="actions">
-          <button class="button" type="button" :disabled="saving || pending" @click="saveDailyAmount">
-            {{ saving ? '保存中' : '保存' }}
-          </button>
-        </div>
-      </form>
-    </section>
-  </main>
+        <form v-else class="form" novalidate @submit.prevent="saveDailyAmount">
+          <div class="user-summary">
+            <div>
+              <span>邮箱</span>
+              <strong>{{ selectedUser.email }}</strong>
+            </div>
+            <div>
+              <span>用户名</span>
+              <strong>{{ selectedUser.username || '-' }}</strong>
+            </div>
+            <div>
+              <span>余额 / 每日金额</span>
+              <strong>{{ formatNumber(selectedUser.balance) }} / {{ formatDailyAmount(currentDailyAmount) }}</strong>
+            </div>
+          </div>
+
+          <label class="field">
+            <span>每日金额</span>
+            <input
+              v-model="amountDraft"
+              class="amount-input"
+              type="number"
+              min="0"
+              step="0.1"
+              placeholder="空为不设置"
+            >
+          </label>
+
+          <div class="actions">
+            <button class="button" type="button" :disabled="saving || pending" @click="saveDailyAmount">
+              {{ saving ? '保存中' : '保存' }}
+            </button>
+          </div>
+        </form>
+      </section>
+    </main>
+  </AdminGate>
 </template>
 
 <style scoped>

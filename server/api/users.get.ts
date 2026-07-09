@@ -1,4 +1,5 @@
 import { readDailyAmounts } from '../utils/settings'
+import { requireAdmin } from '../utils/admin-auth'
 
 type AdminUser = {
   id: number
@@ -51,6 +52,8 @@ function readPositiveInteger(value: unknown, fallback: number, max?: number): nu
 }
 
 export default defineEventHandler(async (event): Promise<PaginatedUsers> => {
+  requireAdmin(event)
+
   const config = useRuntimeConfig(event)
   const apiKey = String(config.sub2apiKey || '').trim()
   const baseUrl = String(config.sub2apiBaseUrl || '').trim()

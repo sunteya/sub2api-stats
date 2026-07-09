@@ -1,6 +1,9 @@
 import { resetUserDailyBalance } from '../../utils/daily-balance-top-up'
+import { requireAdmin } from '../../utils/admin-auth'
 
 export default defineEventHandler(async (event) => {
+  requireAdmin(event)
+
   const body = await readBody<{ email?: unknown }>(event)
   const email = String(body?.email || '').trim()
 

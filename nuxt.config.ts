@@ -9,6 +9,7 @@ export default defineNuxtConfig({
     },
   },
   runtimeConfig: {
+    adminPassword: process.env.ADMIN_PASSWORD || '',
     appDisplayName: process.env.APP_DISPLAY_NAME || '',
     sub2apiBaseUrl: process.env.SUB2API_BASE_URL || '',
     sub2apiKey: process.env.SUB2API_KEY || '',
