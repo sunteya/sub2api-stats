@@ -1,43 +1,183 @@
 <script setup lang="ts">
-const { data, error, pending } = await useFetch('/api/config')
+type User = {
+  id: number
+  email: string
+  username: string | null
+  role: string
+  balance: number
+  concurrency: number
+  current_concurrency?: number | null
+  rpm_limit?: number | null
+  status: string
+  last_active_at?: string | null
+  last_used_at?: string | null
+  created_at: string
+}
+
+type UsersResponse = {
+  items: User[]
+  total: number
+  page: number
+  page_size: number
+  pages: number
+}
+
+const page = ref(1)
+const pageSize = 20
+
+const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
+  query: {
+    page,
+    page_size: pageSize,
+  },
+})
+
+const users = computed(() => data.value?.items || [])
+const total = computed(() => data.value?.total || 0)
+const pages = computed(() => data.value?.pages || 1)
+
+function formatDate(value?: string | null): string {
+  if (!value) {
+    return '-'
+  }
+
+  return new Intl.DateTimeFormat('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(value))
+}
+
+function formatNumber(value?: number | null): string {
+  if (value === null || value === undefined) {
+    return '-'
+  }
+
+  return new Intl.NumberFormat('zh-CN', {
+    maximumFractionDigits: 4,
+  }).format(value)
+}
+
+function previousPage() {
+  if (page.value > 1) {
+    page.value -= 1
+  }
+}
+
+function nextPage() {
+  if (page.value < pages.value) {
+    page.value += 1
+  }
+}
 </script>
 
 <template>
   <main class="page">
-    <section class="panel">
-      <p class="label">APP_DISPLAY_NAME</p>
-      <h1>{{ data?.appDisplayName || 'Not configured' }}</h1>
-      <p v-if="pending" class="status">Loading server config...</p>
-      <p v-else-if="error" class="status error">Failed to load server config.</p>
+    <section class="toolbar">
+      <div>
+        <p class="eyebrow">Sub2API Admin</p>
+        <h1>用户列表</h1>
+      </div>
+      <button class="button" type="button" :disabled="pending" @click="refresh()">
+        {{ pending ? '加载中' : '刷新' }}
+      </button>
     </section>
+
+    <section class="summary" aria-label="用户列表统计">
+      <div>
+        <span>总用户</span>
+        <strong>{{ total }}</strong>
+      </div>
+      <div>
+        <span>当前页</span>
+        <strong>{{ page }} / {{ pages }}</strong>
+      </div>
+      <div>
+        <span>每页</span>
+        <strong>{{ pageSize }}</strong>
+      </div>
+    </section>
+
+    <section class="table-panel">
+      <p v-if="error" class="status error">
+        用户列表加载失败：{{ error.statusMessage || error.message }}
+      </p>
+      <p v-else-if="pending && !data" class="status">正在加载用户列表...</p>
+      <p v-else-if="users.length === 0" class="status">暂无用户。</p>
+
+      <div v-else class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>邮箱</th>
+              <th>用户名</th>
+              <th>角色</th>
+              <th>状态</th>
+              <th>余额</th>
+              <th>并发</th>
+              <th>RPM</th>
+              <th>最近使用</th>
+              <th>创建时间</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="user in users" :key="user.id">
+              <td class="mono">{{ user.id }}</td>
+              <td>{{ user.email }}</td>
+              <td>{{ user.username || '-' }}</td>
+              <td>{{ user.role }}</td>
+              <td>
+                <span class="badge" :class="user.status">{{ user.status }}</span>
+              </td>
+              <td class="number">{{ formatNumber(user.balance) }}</td>
+              <td class="number">
+                {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
+              </td>
+              <td class="number">{{ user.rpm_limit ?? '-' }}</td>
+              <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
+              <td>{{ formatDate(user.created_at) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <nav class="pagination" aria-label="用户列表分页">
+      <button class="button secondary" type="button" :disabled="page <= 1 || pending" @click="previousPage">
+        上一页
+      </button>
+      <span>第 {{ page }} 页，共 {{ pages }} 页</span>
+      <button class="button secondary" type="button" :disabled="page >= pages || pending" @click="nextPage">
+        下一页
+      </button>
+    </nav>
   </main>
 </template>
 
 <style scoped>
 .page {
   min-height: 100vh;
+  margin: 0;
+  padding: 32px;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #f6f7f9;
+  color: #111827;
+}
+
+.toolbar {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin: 0;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #f5f7fb;
-  color: #111827;
-  padding: 24px;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1180px;
+  margin: 0 auto 20px;
 }
 
-.panel {
-  width: min(100%, 560px);
-  border: 1px solid #d6dbe6;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 32px;
-  box-shadow: 0 18px 48px rgb(17 24 39 / 8%);
-}
-
-.label {
-  margin: 0 0 12px;
-  color: #536078;
+.eyebrow {
+  margin: 0 0 6px;
+  color: #667085;
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0;
@@ -45,17 +185,167 @@ const { data, error, pending } = await useFetch('/api/config')
 
 h1 {
   margin: 0;
-  overflow-wrap: anywhere;
-  font-size: clamp(2rem, 8vw, 3rem);
+  font-size: 1.8rem;
+  line-height: 1.2;
+}
+
+.button {
+  min-width: 88px;
+  border: 1px solid #2563eb;
+  border-radius: 6px;
+  background: #2563eb;
+  color: #ffffff;
+  padding: 9px 14px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.button:disabled {
+  border-color: #cbd5e1;
+  background: #e2e8f0;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.button.secondary {
+  border-color: #cbd5e1;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  max-width: 1180px;
+  margin: 0 auto 16px;
+}
+
+.summary div {
+  border: 1px solid #dde3ee;
+  border-radius: 8px;
+  background: #ffffff;
+  padding: 16px;
+}
+
+.summary span {
+  display: block;
+  color: #667085;
+  font-size: 0.82rem;
+  margin-bottom: 8px;
+}
+
+.summary strong {
+  font-size: 1.35rem;
+}
+
+.table-panel {
+  max-width: 1180px;
+  margin: 0 auto;
+  border: 1px solid #dde3ee;
+  border-radius: 8px;
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+th,
+td {
+  border-bottom: 1px solid #eef2f7;
+  padding: 12px 14px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+th {
+  background: #f8fafc;
+  color: #475467;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
+tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.number {
+  text-align: right;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  padding: 2px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.badge.active {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badge.disabled,
+.badge.inactive {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .status {
-  margin: 16px 0 0;
-  color: #536078;
+  margin: 0;
+  padding: 24px;
+  color: #667085;
 }
 
 .error {
   color: #b42318;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 14px;
+  max-width: 1180px;
+  margin: 16px auto 0;
+  color: #475467;
+}
+
+@media (max-width: 720px) {
+  .page {
+    padding: 20px 14px;
+  }
+
+  .toolbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .summary {
+    grid-template-columns: 1fr;
+  }
+
+  .pagination {
+    justify-content: space-between;
+  }
 }
 </style>
