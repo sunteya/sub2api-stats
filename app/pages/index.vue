@@ -23,8 +23,21 @@ type UsersResponse = {
   pages: number
 }
 
+type ResetDailyBalanceResponse = {
+  email: string
+  balance: number
+  target: number
+  amount: number
+  new_balance: number
+  skipped: boolean
+  reason: 'already_enough' | 'topped_up'
+}
+
 const page = ref(1)
 const pageSize = 20
+const resettingEmail = ref('')
+const resetMessage = ref('')
+const resetError = ref('')
 
 const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
   query: {
@@ -60,8 +73,9 @@ function formatNumber(value?: number | null): string {
   }
 
   return new Intl.NumberFormat('zh-CN', {
-    maximumFractionDigits: 4,
-  }).format(value)
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Math.trunc(value * 10) / 10)
 }
 
 function formatDailyAmount(value?: number | null): string {
@@ -70,7 +84,7 @@ function formatDailyAmount(value?: number | null): string {
   }
 
   return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 1,
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(value)
 }
@@ -84,6 +98,49 @@ function previousPage() {
 function nextPage() {
   if (page.value < pages.value) {
     page.value += 1
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  if (error && typeof error === 'object' && 'data' in error) {
+    const data = error.data as { statusMessage?: string; message?: string }
+
+    return data.statusMessage || data.message || '重置每日额度失败'
+  }
+
+  return error instanceof Error ? error.message : '重置每日额度失败'
+}
+
+async function resetDailyBalance(user: User) {
+  if (user.daily_amount === null || user.daily_amount === undefined) {
+    resetError.value = `${user.email} 未设置每日金额。`
+    resetMessage.value = ''
+    return
+  }
+
+  resettingEmail.value = user.email
+  resetMessage.value = ''
+  resetError.value = ''
+
+  try {
+    const result = await $fetch<ResetDailyBalanceResponse>('/api/daily-amounts/reset', {
+      method: 'POST',
+      body: {
+        email: user.email,
+      },
+    })
+
+    if (result.skipped) {
+      resetMessage.value = `${user.email} 当前余额 ${formatNumber(result.balance)} 已达到每日金额 ${formatDailyAmount(result.target)}。`
+    } else {
+      resetMessage.value = `${user.email} 已增加 ${formatNumber(result.amount)}，余额约为 ${formatNumber(result.new_balance)}。`
+    }
+
+    await refresh()
+  } catch (error) {
+    resetError.value = getErrorMessage(error)
+  } finally {
+    resettingEmail.value = ''
   }
 }
 </script>
@@ -118,6 +175,8 @@ function nextPage() {
     </section>
 
     <section class="table-panel">
+      <p v-if="resetError" class="status error">{{ resetError }}</p>
+      <p v-if="resetMessage" class="status success">{{ resetMessage }}</p>
       <p v-if="error" class="status error">
         用户列表加载失败：{{ error.statusMessage || error.message }}
       </p>
@@ -160,9 +219,19 @@ function nextPage() {
               <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
               <td>{{ formatDate(user.created_at) }}</td>
               <td>
-                <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
-                  设置每日金额
-                </NuxtLink>
+                <div class="row-actions">
+                  <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
+                    设置每日金额
+                  </NuxtLink>
+                  <button
+                    class="button compact"
+                    type="button"
+                    :disabled="pending || resettingEmail === user.email || user.daily_amount === null"
+                    @click="resetDailyBalance(user)"
+                  >
+                    {{ resettingEmail === user.email ? '重置中' : '重置每日额度' }}
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
@@ -245,9 +314,15 @@ h1 {
 }
 
 .button.compact {
-  min-width: 108px;
+  min-width: 104px;
   padding: 7px 10px;
   font-size: 0.82rem;
+}
+
+.row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .actions {
@@ -297,7 +372,7 @@ h1 {
 
 table {
   width: 100%;
-  min-width: 980px;
+  min-width: 1120px;
   border-collapse: collapse;
   font-size: 0.9rem;
 }
@@ -365,6 +440,10 @@ tbody tr:last-child td {
 
 .error {
   color: #b42318;
+}
+
+.success {
+  color: #047857;
 }
 
 .pagination {

@@ -43,6 +43,17 @@ type DailyBalanceTopUpResult = {
   already_enough: string[]
 }
 
+type ManualDailyBalanceResetResult = {
+  email: string
+  user_id: number
+  balance: number
+  target: number
+  amount: number
+  new_balance: number
+  skipped: boolean
+  reason: 'already_enough' | 'topped_up'
+}
+
 let activeRun: Promise<DailyBalanceTopUpResult> | null = null
 
 function getShanghaiDate(): string {
@@ -200,6 +211,61 @@ async function runDailyBalanceTopUpNow(options: DailyBalanceTopUpOptions = {}): 
     missing_users: missingUsers,
     already_enough: alreadyEnough,
   }
+}
+
+export async function resetUserDailyBalance(email: string): Promise<ManualDailyBalanceResetResult> {
+  const normalizedEmail = String(email || '').trim().toLowerCase()
+
+  if (!normalizedEmail) {
+    throw new Error('Email is required')
+  }
+
+  const config = await readDailyBalanceTopUpConfig()
+  const target = config.users[normalizedEmail]
+
+  if (target === undefined) {
+    throw new Error(`${normalizedEmail} has no daily amount configured`)
+  }
+
+  const { baseUrl, apiKey } = getSub2apiConfig()
+  const users = await fetchAllUsers(baseUrl, apiKey)
+  const user = users.find((user) => user.email.toLowerCase() === normalizedEmail)
+
+  if (!user) {
+    throw new Error(`${normalizedEmail} was not found in sub2api users`)
+  }
+
+  const balance = Number(user.balance)
+
+  if (!Number.isFinite(balance)) {
+    throw new Error(`Invalid balance for ${normalizedEmail}`)
+  }
+
+  const amount = Math.ceil(target - balance)
+  const result: ManualDailyBalanceResetResult = {
+    email: normalizedEmail,
+    user_id: user.id,
+    balance,
+    target,
+    amount: Math.max(amount, 0),
+    new_balance: balance + Math.max(amount, 0),
+    skipped: amount <= 0,
+    reason: amount <= 0 ? 'already_enough' : 'topped_up',
+  }
+
+  if (amount <= 0) {
+    return result
+  }
+
+  await addUserBalance(baseUrl, apiKey, {
+    email: normalizedEmail,
+    user_id: user.id,
+    balance,
+    target,
+    amount,
+  }, getShanghaiDate())
+
+  return result
 }
 
 export async function runDailyBalanceTopUp(options: DailyBalanceTopUpOptions = {}): Promise<DailyBalanceTopUpResult> {

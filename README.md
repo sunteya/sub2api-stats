@@ -48,7 +48,7 @@ daily_balance_top_up:
     zhuyl@ll100.com: 120
 ```
 
-The user list displays amounts as `balance / daily amount`, such as `18 / 180`. Use the per-user `设置每日金额` button in the user list to edit one user's daily amount.
+The user list displays amounts as `balance / daily amount`, such as `18 / 180`. Use the per-user `设置每日金额` button in the user list to edit one user's daily amount. Use `重置每日额度` to manually top up only that user when their balance is below the configured daily amount; balances at or above the daily amount are left unchanged.
 
 The server runs a daily balance top-up task at `00:00`. On startup, it also runs once if `daily_balance_top_up.last_run_date` is not today's `Asia/Shanghai` date. For each listed user whose balance is below the configured target, it adds `Math.ceil(target - balance)` through the sub2api admin balance API. Users already at or above the target are skipped.
 

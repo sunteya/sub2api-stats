@@ -60,8 +60,9 @@ function formatNumber(value?: number | null): string {
   }
 
   return new Intl.NumberFormat('zh-CN', {
-    maximumFractionDigits: 4,
-  }).format(value)
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  }).format(Math.trunc(value * 10) / 10)
 }
 
 function formatDailyAmount(value?: number | null): string {
@@ -70,7 +71,7 @@ function formatDailyAmount(value?: number | null): string {
   }
 
   return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 1,
+    minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(value)
 }
