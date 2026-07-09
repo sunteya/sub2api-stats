@@ -1,4 +1,4 @@
-import { updateDailyAmounts } from '../utils/daily-amounts'
+import { updateDailyAmounts } from '../utils/settings'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<{ amounts?: Record<string, unknown> }>(event)

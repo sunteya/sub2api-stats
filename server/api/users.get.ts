@@ -1,4 +1,4 @@
-import { readDailyAmounts } from '../utils/daily-amounts'
+import { readDailyAmounts } from '../utils/settings'
 
 type AdminUser = {
   id: number

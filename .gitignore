@@ -4,3 +4,4 @@
 /postgres_data/
 .env
 /daily-amounts.yml
+/settings.yml

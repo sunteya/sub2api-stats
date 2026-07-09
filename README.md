@@ -38,14 +38,21 @@ pnpm dev
 
 Then open `http://localhost:3000` to see the user list. The page source is `app/pages/index.vue`.
 
-Daily amounts are read from `daily-amounts.yml` in the project root. The file uses email addresses as keys and plain numbers as values:
+Daily top-up settings are read from `settings.yml` in the project root. The `daily_balance_top_up.users` map uses email addresses as keys and target balances as values:
 
 ```yaml
-zhunm@ll100.com: 180
-zhuyl@ll100.com: 120
+daily_balance_top_up:
+  last_run_date: ''
+  users:
+    zhunm@ll100.com: 180
+    zhuyl@ll100.com: 120
 ```
 
 The user list displays amounts as `balance / daily amount`, such as `18 / 180`. Use the per-user `设置每日金额` button in the user list to edit one user's daily amount.
+
+The server runs a daily balance top-up task at `00:00`. On startup, it also runs once if `daily_balance_top_up.last_run_date` is not today's `Asia/Shanghai` date. For each listed user whose balance is below the configured target, it adds `Math.ceil(target - balance)` through the sub2api admin balance API. Users already at or above the target are skipped.
+
+Set `TZ=Asia/Shanghai` in the deployment environment so the scheduled task fires at China midnight.
 
 You can start PostgreSQL locally with:
 
@@ -74,6 +81,7 @@ stats:
   user: node
   environment:
     - DATABASE_URL=postgres://sub2api:change_this_secure_password@postgres:5432/sub2api
+    - TZ=Asia/Shanghai
   networks:
     - sub2api-network
   command: sleep infinity

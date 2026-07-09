@@ -1,0 +1,215 @@
+import { readDailyBalanceTopUpConfig, updateDailyBalanceTopUpLastRunDate } from './settings'
+
+type AdminUser = {
+  id: number
+  email: string
+  balance: number
+}
+
+type PaginatedUsers = {
+  items: AdminUser[]
+  page: number
+  page_size: number
+  pages: number
+  total: number
+}
+
+type Sub2apiEnvelope<T> = {
+  code?: number
+  message?: string
+  data?: T
+}
+
+type DailyBalanceTopUpOptions = {
+  force?: boolean
+  reason?: string
+}
+
+type DailyBalanceTopUpItem = {
+  email: string
+  user_id: number
+  balance: number
+  target: number
+  amount: number
+}
+
+type DailyBalanceTopUpResult = {
+  date: string
+  reason: string
+  skipped: boolean
+  matched_users: number
+  topped_up: DailyBalanceTopUpItem[]
+  missing_users: string[]
+  already_enough: string[]
+}
+
+let activeRun: Promise<DailyBalanceTopUpResult> | null = null
+
+function getShanghaiDate(): string {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]))
+
+  return `${values.year}-${values.month}-${values.day}`
+}
+
+function getSub2apiConfig(): { baseUrl: string; apiKey: string } {
+  const config = useRuntimeConfig()
+  const baseUrl = String(config.sub2apiBaseUrl || '').trim()
+  const apiKey = String(config.sub2apiKey || '').trim()
+
+  if (!baseUrl) {
+    throw new Error('SUB2API_BASE_URL is not configured')
+  }
+
+  if (!apiKey) {
+    throw new Error('SUB2API_KEY is not configured')
+  }
+
+  return { baseUrl, apiKey }
+}
+
+async function fetchAllUsers(baseUrl: string, apiKey: string): Promise<AdminUser[]> {
+  const pageSize = 100
+  let page = 1
+  const users: AdminUser[] = []
+
+  while (true) {
+    const response = await $fetch<Sub2apiEnvelope<PaginatedUsers>>('/api/v1/admin/users', {
+      baseURL: baseUrl,
+      headers: {
+        accept: 'application/json',
+        'x-api-key': apiKey,
+      },
+      params: {
+        page,
+        page_size: pageSize,
+      },
+    })
+
+    if (response.code !== 0 || !response.data) {
+      throw new Error(response.message || 'Invalid sub2api users response')
+    }
+
+    users.push(...response.data.items)
+
+    if (page >= response.data.pages || response.data.items.length === 0) {
+      break
+    }
+
+    page += 1
+  }
+
+  return users
+}
+
+async function addUserBalance(baseUrl: string, apiKey: string, item: DailyBalanceTopUpItem, date: string): Promise<void> {
+  const response = await $fetch<Sub2apiEnvelope<AdminUser>>(`/api/v1/admin/users/${item.user_id}/balance`, {
+    method: 'POST',
+    baseURL: baseUrl,
+    headers: {
+      accept: 'application/json',
+      'x-api-key': apiKey,
+    },
+    body: {
+      balance: item.amount,
+      operation: 'add',
+      notes: `Daily balance top-up ${date}`,
+    },
+  })
+
+  if (response.code !== 0) {
+    throw new Error(response.message || `Failed to top up ${item.email}`)
+  }
+}
+
+async function runDailyBalanceTopUpNow(options: DailyBalanceTopUpOptions = {}): Promise<DailyBalanceTopUpResult> {
+  const reason = options.reason || 'manual'
+  const date = getShanghaiDate()
+  const config = await readDailyBalanceTopUpConfig()
+  const targetEntries = Object.entries(config.users)
+
+  if (!options.force && config.last_run_date === date) {
+    return {
+      date,
+      reason,
+      skipped: true,
+      matched_users: 0,
+      topped_up: [],
+      missing_users: [],
+      already_enough: [],
+    }
+  }
+
+  const { baseUrl, apiKey } = getSub2apiConfig()
+  const users = await fetchAllUsers(baseUrl, apiKey)
+  const userByEmail = new Map(users.map((user) => [user.email.toLowerCase(), user]))
+  const toppedUp: DailyBalanceTopUpItem[] = []
+  const missingUsers: string[] = []
+  const alreadyEnough: string[] = []
+  let matchedUsers = 0
+
+  for (const [email, target] of targetEntries) {
+    const user = userByEmail.get(email)
+
+    if (!user) {
+      missingUsers.push(email)
+      continue
+    }
+
+    matchedUsers += 1
+
+    const balance = Number(user.balance)
+
+    if (!Number.isFinite(balance)) {
+      throw new Error(`Invalid balance for ${email}`)
+    }
+
+    const amount = Math.ceil(target - balance)
+
+    if (amount <= 0) {
+      alreadyEnough.push(email)
+      continue
+    }
+
+    const item: DailyBalanceTopUpItem = {
+      email,
+      user_id: user.id,
+      balance,
+      target,
+      amount,
+    }
+
+    await addUserBalance(baseUrl, apiKey, item, date)
+    toppedUp.push(item)
+  }
+
+  await updateDailyBalanceTopUpLastRunDate(date)
+
+  return {
+    date,
+    reason,
+    skipped: false,
+    matched_users: matchedUsers,
+    topped_up: toppedUp,
+    missing_users: missingUsers,
+    already_enough: alreadyEnough,
+  }
+}
+
+export async function runDailyBalanceTopUp(options: DailyBalanceTopUpOptions = {}): Promise<DailyBalanceTopUpResult> {
+  if (activeRun) {
+    return activeRun
+  }
+
+  activeRun = runDailyBalanceTopUpNow(options).finally(() => {
+    activeRun = null
+  })
+
+  return activeRun
+}
