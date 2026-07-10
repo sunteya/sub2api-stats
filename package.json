@@ -9,17 +9,13 @@
     "preview": "nuxt preview",
     "start": "node .output/server/index.mjs",
     "test": "pnpm run test:db",
-    "test:db": "tsx --test postgres.connection.test.ts",
-    "account:stats": "tsx list-account-stats.ts",
-    "request:error": "tsx show-request-error.ts"
+    "test:db": "tsx --test postgres.connection.test.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "packageManager": "pnpm@10.20.0",
   "dependencies": {
-    "cli-table3": "^0.6.5",
-    "dotenv": "^17.3.1",
     "nuxt": "^4.4.8",
     "pg": "^8.20.0",
     "tsx": "^4.21.0",

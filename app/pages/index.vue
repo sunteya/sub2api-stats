@@ -165,6 +165,8 @@ async function resetDailyBalance(user: User) {
           <h1>用户列表</h1>
         </div>
         <div class="actions">
+          <NuxtLink class="button secondary" to="/request-error">请求排查</NuxtLink>
+          <NuxtLink class="button secondary" to="/account-stats">账号统计</NuxtLink>
           <button class="button" type="button" :disabled="pending" @click="refresh()">
             {{ pending ? '加载中' : '刷新' }}
           </button>

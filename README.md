@@ -1,32 +1,6 @@
 # sub2api-stats
 
-A small TypeScript tool for checking account stats from PostgreSQL.
-
-It reads account traffic, drops the fastest 10% and slowest 10% of first-token samples, and prints an ASCII table with the account name, total request count, trimmed average first-token time, 10-minute availability, and latest request time.
-
-Availability is calculated from 10-minute windows that contain requests. The window counts merge request/error logs with account-scoped system logs, and warning-level system log entries are treated as failed requests. A window is counted as unavailable when 10% or more of the merged requests in that window fail.
-
-It also includes a request lookup script that shows which account handled a given `request_id` and the specific error captured for that request.
-
-## Local usage
-
-```bash
-pnpm install
-pnpm account:stats
-```
-
-To inspect a single request with `show-request-error.ts`:
-
-```bash
-pnpm tsx show-request-error.ts 908b32d6-1b13-44b0-9065-795d24deaec3
-
-# or use the package script
-pnpm request:error -- 908b32d6-1b13-44b0-9065-795d24deaec3
-```
-
-Set `DATABASE_URL` in your shell before running the script.
-
-Using `.env` is optional and mainly helpful for deploy or local debugging. You can refer to `.env.example` if needed.
+A Nuxt administration site for Sub2API user management, account statistics, and request-error lookup.
 
 ## Web page
 
@@ -36,7 +10,7 @@ Start the Nuxt web server locally with:
 pnpm dev
 ```
 
-Then open `http://localhost:3000` to see the user list. The page source is `app/pages/index.vue`.
+Then open `http://localhost:3000` to access the user list, account statistics, and request lookup pages.
 
 Daily top-up settings are read from `settings.yml` in the project root. The `daily_balance_top_up.users` map uses email addresses as keys and target balances as values:
 
@@ -85,10 +59,4 @@ stats:
   networks:
     - sub2api-network
   command: sleep infinity
-```
-
-Then run:
-
-```bash
-docker compose exec stats pnpm account:stats
 ```
