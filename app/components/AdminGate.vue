@@ -12,7 +12,6 @@ const errorMessage = ref('')
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'data' in error) {
     const data = error.data as { statusMessage?: string; message?: string }
-
     return data.statusMessage || data.message || '管理密钥校验失败'
   }
 
@@ -48,9 +47,7 @@ async function submitPassword() {
   try {
     const session = await $fetch<AdminSessionResponse>('/api/admin-session', {
       method: 'POST',
-      body: {
-        password,
-      },
+      body: { password },
     })
 
     authenticated.value = session.authenticated
@@ -63,131 +60,29 @@ async function submitPassword() {
   }
 }
 
-onMounted(() => {
-  checkSession()
-})
+onMounted(checkSession)
 </script>
 
 <template>
   <slot v-if="authenticated" />
-  <main v-else class="admin-gate">
-    <form class="login-panel" novalidate @submit.prevent="submitPassword">
-      <p class="eyebrow">Sub2API Admin</p>
-      <h1>输入管理密钥</h1>
-      <p v-if="checking" class="status">正在检查管理权限...</p>
-      <p v-else-if="errorMessage" class="status error">{{ errorMessage }}</p>
+  <main v-else class="grid min-h-screen place-items-center bg-neutral-100 p-5">
+    <UCard class="w-full max-w-md">
+      <template #header>
+        <p class="text-sm font-medium text-primary">Sub2API Admin</p>
+        <h1 class="mt-1 text-2xl font-semibold text-highlighted">输入管理密钥</h1>
+      </template>
 
-      <label class="field">
-        <span>管理密钥</span>
-        <input
-          v-model="passwordDraft"
-          autocomplete="current-password"
-          autofocus
-          class="password-input"
-          type="password"
-          :disabled="checking || submitting"
-        >
-      </label>
+      <div class="space-y-5">
+        <UAlert v-if="checking" color="neutral" variant="subtle" title="正在检查管理权限..." />
+        <UAlert v-else-if="errorMessage" color="error" variant="subtle" :title="errorMessage" />
 
-      <button class="button" type="submit" :disabled="checking || submitting">
-        {{ submitting ? '验证中' : '进入管理' }}
-      </button>
-    </form>
+        <form class="space-y-5" @submit.prevent="submitPassword">
+          <UFormField label="管理密钥" name="password">
+            <UInput v-model="passwordDraft" type="password" autocomplete="current-password" autofocus :disabled="checking || submitting" class="w-full" />
+          </UFormField>
+          <UButton type="submit" label="进入管理" color="primary" :loading="submitting" :disabled="checking || submitting" block />
+        </form>
+      </div>
+    </UCard>
   </main>
 </template>
-
-<style scoped>
-.admin-gate {
-  display: grid;
-  min-height: 100vh;
-  margin: 0;
-  place-items: center;
-  padding: 24px;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #f6f7f9;
-  color: #111827;
-}
-
-.login-panel {
-  width: min(100%, 380px);
-  border: 1px solid #dde3ee;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 24px;
-  box-shadow: 0 18px 50px rgb(15 23 42 / 8%);
-}
-
-.eyebrow {
-  margin: 0 0 6px;
-  color: #667085;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-h1 {
-  margin: 0 0 20px;
-  font-size: 1.65rem;
-  line-height: 1.2;
-}
-
-.field {
-  display: block;
-  margin-bottom: 16px;
-}
-
-.field span {
-  display: block;
-  margin-bottom: 8px;
-  color: #667085;
-  font-size: 0.82rem;
-}
-
-.password-input {
-  width: 100%;
-  box-sizing: border-box;
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 10px 11px;
-  color: #111827;
-  font: inherit;
-}
-
-.password-input:focus {
-  border-color: #2563eb;
-  outline: 2px solid #bfdbfe;
-  outline-offset: 1px;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  min-height: 40px;
-  border: 1px solid #2563eb;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #ffffff;
-  padding: 9px 14px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.button:disabled {
-  border-color: #cbd5e1;
-  background: #e2e8f0;
-  color: #64748b;
-  cursor: not-allowed;
-}
-
-.status {
-  margin: -8px 0 16px;
-  color: #667085;
-}
-
-.error {
-  color: #b42318;
-}
-</style>

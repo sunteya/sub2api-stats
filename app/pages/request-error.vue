@@ -31,7 +31,9 @@ const rawErrors = computed(() => Object.entries(result.value?.rawErrors || {}).f
 
 function formatDate(value: string | null): string | null {
   if (!value) return null
-  return new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).format(new Date(value))
+  return new Intl.DateTimeFormat('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  }).format(new Date(value))
 }
 
 function getErrorMessage(error: unknown): string {
@@ -66,60 +68,63 @@ async function lookup() {
 
 <template>
   <AdminGate>
-    <main class="page">
-      <section class="toolbar">
-        <div><p class="eyebrow">Sub2API Admin</p><h1>请求排查</h1></div>
-        <nav class="actions" aria-label="页面导航">
-          <NuxtLink class="button secondary" to="/">用户列表</NuxtLink>
-          <NuxtLink class="button secondary" to="/account-stats">账号统计</NuxtLink>
-        </nav>
-      </section>
+    <main class="min-h-screen bg-neutral-100">
+      <div class="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
+        <header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-sm font-medium text-primary">Sub2API Admin</p>
+            <h1 class="mt-1 text-2xl font-semibold text-highlighted">请求排查</h1>
+          </div>
+          <nav class="flex flex-wrap gap-2" aria-label="页面导航">
+            <UButton label="用户列表" to="/" color="neutral" variant="outline" />
+            <UButton label="账号统计" to="/account-stats" color="neutral" variant="outline" />
+          </nav>
+        </header>
 
-      <section class="lookup-panel">
-        <form class="lookup-form" @submit.prevent="lookup">
-          <label class="field"><span>请求 ID</span><input v-model="requestId" autocomplete="off" placeholder="输入 request_id" :disabled="pending"></label>
-          <button class="button" type="submit" :disabled="pending">{{ pending ? '查询中' : '查询' }}</button>
-        </form>
-      </section>
+        <UCard class="mb-4">
+          <form class="flex flex-col gap-4 sm:flex-row sm:items-end" @submit.prevent="lookup">
+            <UFormField label="请求 ID" class="flex-1">
+              <UInput v-model="requestId" autocomplete="off" placeholder="输入 request_id" :disabled="pending" class="w-full" />
+            </UFormField>
+            <UButton type="submit" label="查询" icon="i-lucide-search" color="primary" :loading="pending" />
+          </form>
+        </UCard>
 
-      <p v-if="errorMessage" class="status error">{{ errorMessage }}</p>
+        <UAlert v-if="errorMessage" class="mb-4" color="error" variant="subtle" :title="errorMessage" />
 
-      <template v-if="result">
-        <section class="panel summary-panel">
-          <div><span>请求 ID</span><strong class="mono">{{ result.requestId }}</strong></div>
-          <div><span>错误摘要</span><strong>{{ result.error.summary || '未记录错误详情' }}</strong><small v-if="result.error.summarySource">来源：{{ result.error.summarySource }}</small></div>
-        </section>
+        <template v-if="result">
+          <UCard class="mb-4">
+            <div class="grid gap-5 sm:grid-cols-[minmax(200px,0.8fr)_minmax(0,2fr)]">
+              <div><p class="text-sm text-muted">请求 ID</p><p class="mt-1 break-all font-mono text-sm text-highlighted">{{ result.requestId }}</p></div>
+              <div><p class="text-sm text-muted">错误摘要</p><p class="mt-1 font-medium text-highlighted">{{ result.error.summary || '未记录错误详情' }}</p><p v-if="result.error.summarySource" class="mt-1 text-xs text-muted">来源：{{ result.error.summarySource }}</p></div>
+            </div>
+          </UCard>
 
-        <section class="panel details-panel">
-          <h2>请求详情</h2>
-          <dl>
-            <template v-for="[label, value] in details" :key="String(label)">
-              <dt>{{ label }}</dt><dd>{{ value }}</dd>
-            </template>
-          </dl>
-        </section>
+          <UCard class="mb-4">
+            <template #header><h2 class="font-semibold text-highlighted">请求详情</h2></template>
+            <dl class="divide-y divide-default">
+              <div v-for="[label, value] in details" :key="String(label)" class="grid gap-1 py-3 sm:grid-cols-[180px_minmax(0,1fr)] sm:gap-4">
+                <dt class="text-sm text-muted">{{ label }}</dt><dd class="break-all text-sm text-highlighted tabular-nums">{{ value }}</dd>
+              </div>
+            </dl>
+          </UCard>
 
-        <section v-if="result.account.errorMessage" class="panel">
-          <h2>账号错误信息</h2><pre>{{ result.account.errorMessage }}</pre>
-        </section>
+          <UCard v-if="result.account.errorMessage" class="mb-4">
+            <template #header><h2 class="font-semibold text-highlighted">账号错误信息</h2></template>
+            <pre class="overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-highlighted">{{ result.account.errorMessage }}</pre>
+          </UCard>
 
-        <section v-if="rawErrors.length" class="panel raw-panel">
-          <h2>原始错误内容</h2>
-          <details v-for="[source, value] in rawErrors" :key="source">
-            <summary>{{ source }}</summary><pre>{{ value }}</pre>
-          </details>
-        </section>
-      </template>
+          <UCard v-if="rawErrors.length">
+            <template #header><h2 class="font-semibold text-highlighted">原始错误内容</h2></template>
+            <div class="space-y-3">
+              <details v-for="[source, value] in rawErrors" :key="source" class="rounded-md border border-default bg-elevated px-4 py-3">
+                <summary class="cursor-pointer font-mono text-sm font-medium text-highlighted">{{ source }}</summary>
+                <pre class="mt-3 overflow-x-auto whitespace-pre-wrap break-words font-mono text-xs leading-5 text-muted">{{ value }}</pre>
+              </details>
+            </div>
+          </UCard>
+        </template>
+      </div>
     </main>
   </AdminGate>
 </template>
-
-<style scoped>
-.page { min-height: 100vh; padding: 32px; font-family: Arial, Helvetica, sans-serif; background: #f6f7f9; color: #111827; }
-.toolbar, .lookup-panel, .panel, .status { max-width: 980px; margin-left: auto; margin-right: auto; }
-.toolbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 20px; }.eyebrow { margin: 0 0 6px; color: #667085; font-size: .82rem; font-weight: 700; letter-spacing: 0; } h1, h2 { margin: 0; } h1 { font-size: 1.8rem; } h2 { font-size: 1rem; }
-.actions, .lookup-form { display: flex; align-items: end; gap: 10px; }.button { display: inline-flex; align-items: center; justify-content: center; min-height: 40px; min-width: 88px; border: 1px solid #2563eb; border-radius: 6px; background: #2563eb; color: #fff; padding: 9px 14px; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }.button.secondary { border-color: #cbd5e1; background: #fff; color: #1f2937; }.button:disabled { border-color: #cbd5e1; background: #e2e8f0; color: #64748b; cursor: not-allowed; }
-.lookup-panel, .panel { box-sizing: border-box; border: 1px solid #dde3ee; border-radius: 8px; background: #fff; }.lookup-panel { margin-bottom: 16px; padding: 18px; }.field { flex: 1; }.field span { display: block; margin-bottom: 7px; color: #667085; font-size: .82rem; }.field input { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; color: #111827; font: inherit; }.field input:focus { border-color: #2563eb; outline: 2px solid #bfdbfe; outline-offset: 1px; }
-.status { margin-top: 0; margin-bottom: 16px; color: #b42318; }.panel { margin-bottom: 16px; padding: 18px; }.summary-panel { display: grid; grid-template-columns: minmax(200px, .8fr) minmax(0, 2fr); gap: 22px; }.summary-panel span, small { display: block; color: #667085; font-size: .82rem; }.summary-panel strong { display: block; margin: 7px 0; overflow-wrap: anywhere; }.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: .88rem; } dl { display: grid; grid-template-columns: 180px minmax(0, 1fr); margin: 14px 0 0; } dt, dd { margin: 0; border-top: 1px solid #eef2f7; padding: 10px 0; overflow-wrap: anywhere; } dt { color: #667085; } dd { font-variant-numeric: tabular-nums; } pre { margin: 14px 0 0; overflow-x: auto; white-space: pre-wrap; overflow-wrap: anywhere; font: .85rem/1.5 ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; } details { border-top: 1px solid #eef2f7; padding: 12px 0; } details:first-of-type { margin-top: 14px; } summary { cursor: pointer; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
-@media (max-width: 720px) { .page { padding: 20px 14px; }.toolbar { align-items: flex-start; flex-direction: column; }.actions { width: 100%; }.actions .button { flex: 1; }.lookup-form, .summary-panel { display: grid; grid-template-columns: 1fr; }.lookup-form .button { width: 100%; } dl { grid-template-columns: 1fr; } dt { border-bottom: 0; padding-bottom: 2px; } dd { border-top: 0; padding-top: 2px; } }
-</style>

@@ -1,9 +1,9 @@
 <script setup lang="ts">
+import type { TableColumn } from '@nuxt/ui'
+
 type User = {
   id: number
   email: string
-  username: string | null
-  role: string
   balance: number
   daily_amount: number | null
   concurrency: number
@@ -24,10 +24,7 @@ type UsersResponse = {
 }
 
 type DailyUsageResponse = {
-  items: Array<{
-    email: string
-    daily_used: number
-  }>
+  items: Array<{ email: string; daily_used: number }>
 }
 
 type ResetDailyBalanceResponse = {
@@ -37,7 +34,6 @@ type ResetDailyBalanceResponse = {
   amount: number
   new_balance: number
   skipped: boolean
-  reason: 'already_enough' | 'topped_up'
 }
 
 const page = ref(1)
@@ -49,11 +45,21 @@ const dailyUsageByEmail = ref<Record<string, number>>({})
 const isAdminAuthenticated = useState<boolean>('admin-authenticated', () => false)
 let dailyUsageRequest = 0
 
+const columns: TableColumn<User>[] = [
+  { accessorKey: 'id', header: 'ID' },
+  { accessorKey: 'email', header: '邮箱' },
+  { accessorKey: 'status', header: '状态' },
+  { accessorKey: 'balance', header: '余额' },
+  { id: 'usage', header: '使用额度' },
+  { id: 'concurrency', header: '并发' },
+  { accessorKey: 'rpm_limit', header: 'RPM' },
+  { id: 'last_used_at', header: '最近使用' },
+  { accessorKey: 'created_at', header: '创建时间' },
+  { id: 'actions', header: '操作' },
+]
+
 const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
-  query: {
-    page,
-    page_size: pageSize,
-  },
+  query: { page, page_size: pageSize },
   immediate: false,
   watch: false,
 })
@@ -67,9 +73,7 @@ watch(users, async (loadedUsers) => {
   const emails = loadedUsers.map((user) => user.email)
   dailyUsageByEmail.value = {}
 
-  if (emails.length === 0) {
-    return
-  }
+  if (!emails.length) return
 
   try {
     const result = await $fetch<DailyUsageResponse>('/api/daily-usage', {
@@ -77,66 +81,35 @@ watch(users, async (loadedUsers) => {
       body: { emails },
     })
 
-    if (requestId !== dailyUsageRequest) {
-      return
-    }
-
-    dailyUsageByEmail.value = Object.fromEntries(
-      result.items.map((item) => [item.email.toLowerCase(), item.daily_used]),
-    )
-  } catch {
-    // Preserve the user list when usage statistics are temporarily unavailable.
     if (requestId === dailyUsageRequest) {
-      dailyUsageByEmail.value = {}
+      dailyUsageByEmail.value = Object.fromEntries(result.items.map((item) => [item.email.toLowerCase(), item.daily_used]))
     }
+  } catch {
+    if (requestId === dailyUsageRequest) dailyUsageByEmail.value = {}
   }
 })
 
 watch(isAdminAuthenticated, (authenticated) => {
-  if (authenticated) {
-    refresh()
-  }
+  if (authenticated) refresh()
 }, { immediate: true })
 
 watch(page, () => {
-  if (isAdminAuthenticated.value) {
-    refresh()
-  }
+  if (isAdminAuthenticated.value) refresh()
 })
 
 function formatDate(value?: string | null): string {
-  if (!value) {
-    return '-'
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(value))
+  if (!value) return '-'
+  return new Intl.DateTimeFormat('sv-SE', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(value))
 }
 
 function formatNumber(value?: number | null): string {
-  if (value === null || value === undefined) {
-    return '-'
-  }
-
-  return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  }).format(Math.trunc(value * 10) / 10)
+  if (value === null || value === undefined) return '-'
+  return new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(Math.trunc(value * 10) / 10)
 }
 
 function formatDailyAmount(value?: number | null): string {
-  if (value === null || value === undefined) {
-    return '-'
-  }
-
-  return new Intl.NumberFormat('zh-CN', {
-    minimumFractionDigits: 0,
-    maximumFractionDigits: 1,
-  }).format(value)
+  if (value === null || value === undefined) return '-'
+  return new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(value)
 }
 
 function getDailyUsage(email: string): number | null {
@@ -146,38 +119,22 @@ function getDailyUsage(email: string): number | null {
 function getDailyUsagePercentage(user: User): number | null {
   const dailyUsage = getDailyUsage(user.email)
   const dailyAmount = user.daily_amount
-
-  if (dailyUsage === null || dailyAmount === null || dailyAmount === undefined || dailyAmount <= 0) {
-    return null
-  }
-
+  if (dailyUsage === null || !dailyAmount || dailyAmount <= 0) return null
   return dailyUsage / dailyAmount * 100
-}
-
-function getProgressWidth(percentage: number): string {
-  return `${Math.min(Math.max(percentage, 0), 100)}%`
-}
-
-function previousPage() {
-  if (page.value > 1) {
-    page.value -= 1
-  }
-}
-
-function nextPage() {
-  if (page.value < pages.value) {
-    page.value += 1
-  }
 }
 
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'data' in error) {
     const data = error.data as { statusMessage?: string; message?: string }
-
     return data.statusMessage || data.message || '重置每日额度失败'
   }
-
   return error instanceof Error ? error.message : '重置每日额度失败'
+}
+
+function statusColor(status: string): 'success' | 'error' | 'neutral' {
+  if (status === 'active') return 'success'
+  if (status === 'disabled' || status === 'inactive') return 'error'
+  return 'neutral'
 }
 
 async function resetDailyBalance(user: User) {
@@ -194,17 +151,11 @@ async function resetDailyBalance(user: User) {
   try {
     const result = await $fetch<ResetDailyBalanceResponse>('/api/daily-amounts/reset', {
       method: 'POST',
-      body: {
-        email: user.email,
-      },
+      body: { email: user.email },
     })
-
-    if (result.skipped) {
-      resetMessage.value = `${user.email} 当前余额 ${formatNumber(result.balance)} 已达到每日金额 ${formatDailyAmount(result.target)}。`
-    } else {
-      resetMessage.value = `${user.email} 已增加 ${formatNumber(result.amount)}，余额约为 ${formatNumber(result.new_balance)}。`
-    }
-
+    resetMessage.value = result.skipped
+      ? `${user.email} 当前余额 ${formatNumber(result.balance)} 已达到每日金额 ${formatDailyAmount(result.target)}。`
+      : `${user.email} 已增加 ${formatNumber(result.amount)}，余额约为 ${formatNumber(result.new_balance)}。`
     await refresh()
   } catch (error) {
     resetError.value = getErrorMessage(error)
@@ -216,385 +167,68 @@ async function resetDailyBalance(user: User) {
 
 <template>
   <AdminGate>
-    <main class="page">
-      <section class="toolbar">
-        <div>
-          <p class="eyebrow">Sub2API Admin</p>
-          <h1>用户列表</h1>
-        </div>
-        <div class="actions">
-          <NuxtLink class="button secondary" to="/request-error">请求排查</NuxtLink>
-          <NuxtLink class="button secondary" to="/account-stats">账号统计</NuxtLink>
-          <button class="button" type="button" :disabled="pending" @click="refresh()">
-            {{ pending ? '加载中' : '刷新' }}
-          </button>
-        </div>
-      </section>
+    <main class="min-h-screen bg-neutral-100">
+      <div class="mx-auto max-w-[1440px] px-4 py-6 sm:px-6 lg:px-8">
+        <header class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p class="text-sm font-medium text-primary">Sub2API Admin</p>
+            <h1 class="mt-1 text-2xl font-semibold text-highlighted">用户列表</h1>
+          </div>
+          <nav class="flex flex-wrap gap-2" aria-label="页面导航">
+            <UButton label="请求排查" to="/request-error" color="neutral" variant="outline" />
+            <UButton label="账号统计" to="/account-stats" color="neutral" variant="outline" />
+            <UButton label="刷新" icon="i-lucide-refresh-cw" color="primary" :loading="pending" @click="refresh()" />
+          </nav>
+        </header>
 
-      <section class="summary" aria-label="用户列表统计">
-        <div>
-          <span>总用户</span>
-          <strong>{{ total }}</strong>
-        </div>
-        <div>
-          <span>当前页</span>
-          <strong>{{ page }} / {{ pages }}</strong>
-        </div>
-        <div>
-          <span>每页</span>
-          <strong>{{ pageSize }}</strong>
-        </div>
-      </section>
+        <section class="mb-5 grid gap-4 sm:grid-cols-3" aria-label="用户列表统计">
+          <UCard><p class="text-sm text-muted">总用户</p><p class="mt-2 text-2xl font-semibold text-highlighted tabular-nums">{{ total }}</p></UCard>
+          <UCard><p class="text-sm text-muted">当前页</p><p class="mt-2 text-2xl font-semibold text-highlighted tabular-nums">{{ page }} / {{ pages }}</p></UCard>
+          <UCard><p class="text-sm text-muted">每页</p><p class="mt-2 text-2xl font-semibold text-highlighted tabular-nums">{{ pageSize }}</p></UCard>
+        </section>
 
-      <section class="table-panel">
-        <p v-if="resetError" class="status error">{{ resetError }}</p>
-        <p v-if="resetMessage" class="status success">{{ resetMessage }}</p>
-        <p v-if="error" class="status error">
-          用户列表加载失败：{{ error.statusMessage || error.message }}
-        </p>
-        <p v-else-if="pending && !data" class="status">正在加载用户列表...</p>
-        <p v-else-if="users.length === 0" class="status">暂无用户。</p>
-
-        <div v-else class="table-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>ID</th>
-                <th>邮箱</th>
-                <th>用户名</th>
-                <th>角色</th>
-                <th>状态</th>
-                <th>余额 / 每日金额</th>
-                <th>并发</th>
-                <th>RPM</th>
-                <th>最近使用</th>
-                <th>创建时间</th>
-                <th>操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="user in users" :key="user.id">
-                <td class="mono">{{ user.id }}</td>
-                <td>{{ user.email }}</td>
-                <td>{{ user.username || '-' }}</td>
-                <td>{{ user.role }}</td>
-                <td>
-                  <span class="badge" :class="user.status">{{ user.status }}</span>
-                </td>
-                <td class="amount-cell">
-                  <span class="amount-display">{{ formatNumber(user.balance) }} / {{ formatDailyAmount(user.daily_amount) }}</span>
-                  <template v-if="getDailyUsagePercentage(user) !== null">
-                    <span class="usage-progress-label">({{ formatNumber(getDailyUsagePercentage(user)) }}%)</span>
-                    <span class="usage-progress" :class="{ over: (getDailyUsagePercentage(user) || 0) > 100 }">
-                      <span
-                        class="usage-progress-fill"
-                        :style="{ width: getProgressWidth(getDailyUsagePercentage(user) || 0) }"
-                      />
-                    </span>
-                  </template>
-                </td>
-                <td class="number">
-                  {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
-                </td>
-                <td class="number">{{ user.rpm_limit ?? '-' }}</td>
-                <td>{{ formatDate(user.last_used_at || user.last_active_at) }}</td>
-                <td>{{ formatDate(user.created_at) }}</td>
-                <td>
-                  <div class="row-actions">
-                    <NuxtLink class="button secondary compact" :to="{ path: '/daily-amounts', query: { email: user.email } }">
-                      设置每日金额
-                    </NuxtLink>
-                    <button
-                      class="button compact"
-                      type="button"
-                      :disabled="pending || resettingEmail === user.email || user.daily_amount === null"
-                      @click="resetDailyBalance(user)"
-                    >
-                      {{ resettingEmail === user.email ? '重置中' : '重置每日额度' }}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+        <div class="mb-4 space-y-3">
+          <UAlert v-if="resetError" color="error" variant="subtle" :title="resetError" />
+          <UAlert v-if="resetMessage" color="success" variant="subtle" :title="resetMessage" />
+          <UAlert v-if="error" color="error" variant="subtle" :title="`用户列表加载失败：${error.statusMessage || error.message}`" />
         </div>
-      </section>
 
-      <nav class="pagination" aria-label="用户列表分页">
-        <button class="button secondary" type="button" :disabled="page <= 1 || pending" @click="previousPage">
-          上一页
-        </button>
-        <span>第 {{ page }} 页，共 {{ pages }} 页</span>
-        <button class="button secondary" type="button" :disabled="page >= pages || pending" @click="nextPage">
-          下一页
-        </button>
-      </nav>
+        <UCard :ui="{ body: 'p-0 sm:p-0' }">
+          <div class="overflow-x-auto">
+            <UTable :data="users" :columns="columns" :loading="pending && !data" class="min-w-[1200px]">
+              <template #id-cell="{ row }"><span class="font-mono text-xs tabular-nums">{{ row.original.id }}</span></template>
+              <template #status-cell="{ row }"><UBadge :color="statusColor(row.original.status)" variant="subtle" :label="row.original.status" /></template>
+              <template #balance-cell="{ row }">
+                <div class="tabular-nums">
+                  {{ formatNumber(row.original.balance) }}
+                </div>
+              </template>
+              <template #usage-cell="{ row }">
+                <div v-if="getDailyUsagePercentage(row.original) !== null" class="min-w-40">
+                  <div class="text-xs text-muted tabular-nums">{{ formatNumber(getDailyUsage(row.original.email)) }} / {{ formatDailyAmount(row.original.daily_amount) }} ({{ formatNumber(getDailyUsagePercentage(row.original)) }}%)</div>
+                  <UProgress :model-value="Math.min(getDailyUsagePercentage(row.original) || 0, 100)" :color="(getDailyUsagePercentage(row.original) || 0) > 100 ? 'error' : 'primary'" size="sm" class="mt-1.5" />
+                </div>
+                <span v-else>-</span>
+              </template>
+              <template #concurrency-cell="{ row }"><span class="tabular-nums">{{ row.original.current_concurrency ?? 0 }} / {{ row.original.concurrency }}</span></template>
+              <template #rpm_limit-cell="{ row }"><span class="tabular-nums">{{ row.original.rpm_limit ?? '-' }}</span></template>
+              <template #last_used_at-cell="{ row }">{{ formatDate(row.original.last_used_at || row.original.last_active_at) }}</template>
+              <template #created_at-cell="{ row }">{{ formatDate(row.original.created_at) }}</template>
+              <template #actions-cell="{ row }">
+                <div class="flex items-center gap-2">
+                  <UButton label="设置每日金额" size="xs" color="neutral" variant="outline" :to="{ path: '/daily-amounts', query: { email: row.original.email } }" />
+                  <UButton label="重置每日额度" size="xs" color="primary" :loading="resettingEmail === row.original.email" :disabled="pending || row.original.daily_amount === null" @click="resetDailyBalance(row.original)" />
+                </div>
+              </template>
+              <template #empty><div class="p-10 text-center text-sm text-muted">暂无用户。</div></template>
+            </UTable>
+          </div>
+        </UCard>
+
+        <div class="mt-4 flex justify-end">
+          <UPagination v-model:page="page" :total="total" :items-per-page="pageSize" :sibling-count="1" show-edges />
+        </div>
+      </div>
     </main>
   </AdminGate>
 </template>
-
-<style scoped>
-.page {
-  min-height: 100vh;
-  margin: 0;
-  padding: 32px;
-  font-family: Arial, Helvetica, sans-serif;
-  background: #f6f7f9;
-  color: #111827;
-}
-
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  max-width: 1180px;
-  margin: 0 auto 20px;
-}
-
-.eyebrow {
-  margin: 0 0 6px;
-  color: #667085;
-  font-size: 0.82rem;
-  font-weight: 700;
-  letter-spacing: 0;
-}
-
-h1 {
-  margin: 0;
-  font-size: 1.8rem;
-  line-height: 1.2;
-}
-
-.button {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 88px;
-  border: 1px solid #2563eb;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #ffffff;
-  padding: 9px 14px;
-  font-size: 0.92rem;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.button:disabled {
-  border-color: #cbd5e1;
-  background: #e2e8f0;
-  color: #64748b;
-  cursor: not-allowed;
-}
-
-.button.secondary {
-  border-color: #cbd5e1;
-  background: #ffffff;
-  color: #1f2937;
-  text-decoration: none;
-}
-
-.button.compact {
-  min-width: 104px;
-  padding: 7px 10px;
-  font-size: 0.82rem;
-}
-
-.row-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.actions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.summary {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-  max-width: 1180px;
-  margin: 0 auto 16px;
-}
-
-.summary div {
-  border: 1px solid #dde3ee;
-  border-radius: 8px;
-  background: #ffffff;
-  padding: 16px;
-}
-
-.summary span {
-  display: block;
-  color: #667085;
-  font-size: 0.82rem;
-  margin-bottom: 8px;
-}
-
-.summary strong {
-  font-size: 1.35rem;
-}
-
-.table-panel {
-  max-width: 1180px;
-  margin: 0 auto;
-  border: 1px solid #dde3ee;
-  border-radius: 8px;
-  background: #ffffff;
-  overflow: hidden;
-}
-
-.table-wrap {
-  overflow-x: auto;
-}
-
-table {
-  width: 100%;
-  min-width: 1120px;
-  border-collapse: collapse;
-  font-size: 0.9rem;
-}
-
-th,
-td {
-  border-bottom: 1px solid #eef2f7;
-  padding: 12px 14px;
-  text-align: left;
-  white-space: nowrap;
-}
-
-th {
-  background: #f8fafc;
-  color: #475467;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-tbody tr:last-child td {
-  border-bottom: 0;
-}
-
-.mono {
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-}
-
-.number {
-  text-align: right;
-}
-
-.amount-display {
-  color: #1f2937;
-  font-variant-numeric: tabular-nums;
-}
-
-.amount-cell {
-  min-width: 156px;
-}
-
-.usage-progress-label {
-  margin-left: 6px;
-  color: #667085;
-  font-size: 0.76rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.usage-progress {
-  display: block;
-  width: 132px;
-  height: 6px;
-  margin-top: 5px;
-  overflow: hidden;
-  border-radius: 4px;
-  background: #dbe3ef;
-}
-
-.usage-progress-fill {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: #2563eb;
-}
-
-.usage-progress.over .usage-progress-fill {
-  background: #dc2626;
-}
-
-.badge {
-  display: inline-flex;
-  align-items: center;
-  min-height: 24px;
-  border-radius: 999px;
-  background: #f1f5f9;
-  color: #334155;
-  padding: 2px 10px;
-  font-size: 0.78rem;
-  font-weight: 700;
-}
-
-.badge.active {
-  background: #dcfce7;
-  color: #166534;
-}
-
-.badge.disabled,
-.badge.inactive {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.status {
-  margin: 0;
-  padding: 24px;
-  color: #667085;
-}
-
-.error {
-  color: #b42318;
-}
-
-.success {
-  color: #047857;
-}
-
-.pagination {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 14px;
-  max-width: 1180px;
-  margin: 16px auto 0;
-  color: #475467;
-}
-
-@media (max-width: 720px) {
-  .page {
-    padding: 20px 14px;
-  }
-
-  .toolbar {
-    align-items: flex-start;
-    flex-direction: column;
-  }
-
-  .actions {
-    width: 100%;
-  }
-
-  .actions .button {
-    flex: 1;
-    text-align: center;
-  }
-
-  .summary {
-    grid-template-columns: 1fr;
-  }
-
-  .pagination {
-    justify-content: space-between;
-  }
-}
-</style>
