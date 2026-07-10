@@ -23,6 +23,13 @@ type UsersResponse = {
   pages: number
 }
 
+type DailyUsageResponse = {
+  items: Array<{
+    email: string
+    daily_used: number
+  }>
+}
+
 type ResetDailyBalanceResponse = {
   email: string
   balance: number
@@ -38,7 +45,9 @@ const pageSize = 20
 const resettingEmail = ref('')
 const resetMessage = ref('')
 const resetError = ref('')
+const dailyUsageByEmail = ref<Record<string, number>>({})
 const isAdminAuthenticated = useState<boolean>('admin-authenticated', () => false)
+let dailyUsageRequest = 0
 
 const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/users', {
   query: {
@@ -52,6 +61,36 @@ const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/us
 const users = computed(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
 const pages = computed(() => data.value?.pages || 1)
+
+watch(users, async (loadedUsers) => {
+  const requestId = ++dailyUsageRequest
+  const emails = loadedUsers.map((user) => user.email)
+  dailyUsageByEmail.value = {}
+
+  if (emails.length === 0) {
+    return
+  }
+
+  try {
+    const result = await $fetch<DailyUsageResponse>('/api/daily-usage', {
+      method: 'POST',
+      body: { emails },
+    })
+
+    if (requestId !== dailyUsageRequest) {
+      return
+    }
+
+    dailyUsageByEmail.value = Object.fromEntries(
+      result.items.map((item) => [item.email.toLowerCase(), item.daily_used]),
+    )
+  } catch {
+    // Preserve the user list when usage statistics are temporarily unavailable.
+    if (requestId === dailyUsageRequest) {
+      dailyUsageByEmail.value = {}
+    }
+  }
+})
 
 watch(isAdminAuthenticated, (authenticated) => {
   if (authenticated) {
@@ -98,6 +137,25 @@ function formatDailyAmount(value?: number | null): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,
   }).format(value)
+}
+
+function getDailyUsage(email: string): number | null {
+  return dailyUsageByEmail.value[email.toLowerCase()] ?? null
+}
+
+function getDailyUsagePercentage(user: User): number | null {
+  const dailyUsage = getDailyUsage(user.email)
+  const dailyAmount = user.daily_amount
+
+  if (dailyUsage === null || dailyAmount === null || dailyAmount === undefined || dailyAmount <= 0) {
+    return null
+  }
+
+  return dailyUsage / dailyAmount * 100
+}
+
+function getProgressWidth(percentage: number): string {
+  return `${Math.min(Math.max(percentage, 0), 100)}%`
 }
 
 function previousPage() {
@@ -223,8 +281,17 @@ async function resetDailyBalance(user: User) {
                 <td>
                   <span class="badge" :class="user.status">{{ user.status }}</span>
                 </td>
-                <td>
+                <td class="amount-cell">
                   <span class="amount-display">{{ formatNumber(user.balance) }} / {{ formatDailyAmount(user.daily_amount) }}</span>
+                  <template v-if="getDailyUsagePercentage(user) !== null">
+                    <span class="usage-progress-label">({{ formatNumber(getDailyUsagePercentage(user)) }}%)</span>
+                    <span class="usage-progress" :class="{ over: (getDailyUsagePercentage(user) || 0) > 100 }">
+                      <span
+                        class="usage-progress-fill"
+                        :style="{ width: getProgressWidth(getDailyUsagePercentage(user) || 0) }"
+                      />
+                    </span>
+                  </template>
                 </td>
                 <td class="number">
                   {{ user.current_concurrency ?? 0 }} / {{ user.concurrency }}
@@ -422,6 +489,38 @@ tbody tr:last-child td {
 .amount-display {
   color: #1f2937;
   font-variant-numeric: tabular-nums;
+}
+
+.amount-cell {
+  min-width: 156px;
+}
+
+.usage-progress-label {
+  margin-left: 6px;
+  color: #667085;
+  font-size: 0.76rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.usage-progress {
+  display: block;
+  width: 132px;
+  height: 6px;
+  margin-top: 5px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: #dbe3ef;
+}
+
+.usage-progress-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #2563eb;
+}
+
+.usage-progress.over .usage-progress-fill {
+  background: #dc2626;
 }
 
 .badge {
