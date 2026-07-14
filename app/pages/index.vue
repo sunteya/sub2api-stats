@@ -36,6 +36,22 @@ type ResetDailyBalanceResponse = {
   skipped: boolean
 }
 
+type UsageProgressColor = 'primary' | 'secondary' | 'info' | 'warning' | 'error'
+
+type UsageProgress = {
+  value: number
+  color: UsageProgressColor
+  baseClass?: string
+}
+
+const usageProgressLayers = [
+  { color: 'primary', baseClass: 'bg-primary' },
+  { color: 'error', baseClass: 'bg-error' },
+  { color: 'warning', baseClass: 'bg-warning' },
+  { color: 'secondary', baseClass: 'bg-secondary' },
+  { color: 'info', baseClass: 'bg-info' },
+] as const satisfies ReadonlyArray<{ color: UsageProgressColor; baseClass: string }>
+
 const page = ref(1)
 const pageSize = 20
 const resettingEmail = ref('')
@@ -123,6 +139,21 @@ function getDailyUsagePercentage(user: User): number | null {
   return dailyUsage / dailyAmount * 100
 }
 
+function getUsageProgress(user: User): UsageProgress {
+  const percentage = Math.max(getDailyUsagePercentage(user) || 0, 0)
+  const layerIndex = Math.max(Math.ceil(percentage / 100) - 1, 0)
+  const layer = usageProgressLayers[layerIndex % usageProgressLayers.length]!
+  const previousLayer = layerIndex > 0
+    ? usageProgressLayers[(layerIndex - 1) % usageProgressLayers.length]!
+    : null
+
+  return {
+    value: Math.min(percentage - layerIndex * 100, 100),
+    color: layer.color,
+    baseClass: previousLayer?.baseClass,
+  }
+}
+
 function getErrorMessage(error: unknown): string {
   if (error && typeof error === 'object' && 'data' in error) {
     const data = error.data as { statusMessage?: string; message?: string }
@@ -206,7 +237,13 @@ async function resetDailyBalance(user: User) {
               <template #usage-cell="{ row }">
                 <div v-if="getDailyUsagePercentage(row.original) !== null" class="min-w-40">
                   <div class="text-xs text-muted tabular-nums">{{ formatNumber(getDailyUsage(row.original.email)) }} / {{ formatDailyAmount(row.original.daily_amount) }} ({{ formatNumber(getDailyUsagePercentage(row.original)) }}%)</div>
-                  <UProgress :model-value="Math.min(getDailyUsagePercentage(row.original) || 0, 100)" :color="(getDailyUsagePercentage(row.original) || 0) > 100 ? 'error' : 'primary'" size="sm" class="mt-1.5" />
+                  <UProgress
+                    :model-value="getUsageProgress(row.original).value"
+                    :color="getUsageProgress(row.original).color"
+                    :ui="{ base: getUsageProgress(row.original).baseClass }"
+                    size="sm"
+                    class="mt-1.5"
+                  />
                 </div>
                 <span v-else>-</span>
               </template>
