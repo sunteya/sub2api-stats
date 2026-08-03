@@ -58,5 +58,5 @@ stats:
     - TZ=Asia/Shanghai
   networks:
     - sub2api-network
-  command: sleep infinity
+  command: pnpm start
 ```

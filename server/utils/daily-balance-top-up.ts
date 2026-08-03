@@ -54,6 +54,12 @@ type ManualDailyBalanceResetResult = {
   reason: 'already_enough' | 'topped_up'
 }
 
+type ManualBalanceTopUpResult = {
+  user_id: number
+  amount: number
+  new_balance: number | null
+}
+
 let activeRun: Promise<DailyBalanceTopUpResult> | null = null
 
 function getShanghaiDate(): string {
@@ -119,8 +125,8 @@ async function fetchAllUsers(baseUrl: string, apiKey: string): Promise<AdminUser
   return users
 }
 
-async function addUserBalance(baseUrl: string, apiKey: string, item: DailyBalanceTopUpItem, date: string): Promise<void> {
-  const response = await $fetch<Sub2apiEnvelope<AdminUser>>(`/api/v1/admin/users/${item.user_id}/balance`, {
+async function requestBalanceAddition(baseUrl: string, apiKey: string, userId: number, amount: number, notes: string): Promise<AdminUser | null> {
+  const response = await $fetch<Sub2apiEnvelope<AdminUser>>(`/api/v1/admin/users/${userId}/balance`, {
     method: 'POST',
     baseURL: baseUrl,
     headers: {
@@ -128,15 +134,21 @@ async function addUserBalance(baseUrl: string, apiKey: string, item: DailyBalanc
       'x-api-key': apiKey,
     },
     body: {
-      balance: item.amount,
+      balance: amount,
       operation: 'add',
-      notes: `Daily balance top-up ${date}`,
+      notes,
     },
   })
 
   if (response.code !== 0) {
-    throw new Error(response.message || `Failed to top up ${item.email}`)
+    throw new Error(response.message || `Failed to top up user ${userId}`)
   }
+
+  return response.data || null
+}
+
+async function addDailyUserBalance(baseUrl: string, apiKey: string, item: DailyBalanceTopUpItem, date: string): Promise<void> {
+  await requestBalanceAddition(baseUrl, apiKey, item.user_id, item.amount, `Daily balance top-up ${date}`)
 }
 
 async function runDailyBalanceTopUpNow(options: DailyBalanceTopUpOptions = {}): Promise<DailyBalanceTopUpResult> {
@@ -196,7 +208,7 @@ async function runDailyBalanceTopUpNow(options: DailyBalanceTopUpOptions = {}): 
       amount,
     }
 
-    await addUserBalance(baseUrl, apiKey, item, date)
+    await addDailyUserBalance(baseUrl, apiKey, item, date)
     toppedUp.push(item)
   }
 
@@ -257,7 +269,7 @@ export async function resetUserDailyBalance(email: string): Promise<ManualDailyB
     return result
   }
 
-  await addUserBalance(baseUrl, apiKey, {
+  await addDailyUserBalance(baseUrl, apiKey, {
     email: normalizedEmail,
     user_id: user.id,
     balance,
@@ -266,6 +278,28 @@ export async function resetUserDailyBalance(email: string): Promise<ManualDailyB
   }, getShanghaiDate())
 
   return result
+}
+
+export async function addManualUserBalance(userId: number, rawAmount: number): Promise<ManualBalanceTopUpResult> {
+  if (!Number.isInteger(userId) || userId <= 0) {
+    throw new Error('Invalid user ID')
+  }
+
+  const amount = Math.round(rawAmount * 10) / 10
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error('Amount must be greater than 0')
+  }
+
+  const { baseUrl, apiKey } = getSub2apiConfig()
+  const user = await requestBalanceAddition(baseUrl, apiKey, userId, amount, `Manual balance top-up ${getShanghaiDate()}`)
+  const newBalance = Number(user?.balance)
+
+  return {
+    user_id: userId,
+    amount,
+    new_balance: Number.isFinite(newBalance) ? newBalance : null,
+  }
 }
 
 export async function runDailyBalanceTopUp(options: DailyBalanceTopUpOptions = {}): Promise<DailyBalanceTopUpResult> {

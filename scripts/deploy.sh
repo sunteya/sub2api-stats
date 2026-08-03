@@ -30,4 +30,5 @@ git ls-files -z | rsync -e "ssh -p $DEPLOY_PORT" -r -v --files-from=- -0 . "$DEP
 server_exec "chown -R 1000:1000 ./stats"
 server_exec "docker compose stop stats"
 server_exec "$install_cmd"
+server_exec "docker compose run --rm stats pnpm build"
 server_exec "docker compose up -d"

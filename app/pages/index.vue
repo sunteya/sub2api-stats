@@ -36,6 +36,14 @@ type ResetDailyBalanceResponse = {
   skipped: boolean
 }
 
+type AddBalanceResponse = {
+  user_id: number
+  amount: number
+  new_balance: number | null
+}
+
+type BalanceOperation = 'add' | 'reset'
+
 type UsageProgressColor = 'primary' | 'secondary' | 'info' | 'warning' | 'error'
 
 type UsageProgress = {
@@ -54,9 +62,13 @@ const usageProgressLayers = [
 
 const page = ref(1)
 const pageSize = 20
-const resettingEmail = ref('')
-const resetMessage = ref('')
-const resetError = ref('')
+const operationMessage = ref('')
+const balanceModalOpen = ref(false)
+const balanceUser = ref<User | null>(null)
+const balanceOperation = ref<BalanceOperation>('add')
+const amountDraft = ref<number | null>(null)
+const balanceSubmitting = ref(false)
+const balanceError = ref('')
 const dailyUsageByEmail = ref<Record<string, number>>({})
 const isAdminAuthenticated = useState<boolean>('admin-authenticated', () => false)
 let dailyUsageRequest = 0
@@ -83,6 +95,19 @@ const { data, error, pending, refresh } = await useFetch<UsersResponse>('/api/us
 const users = computed(() => data.value?.items || [])
 const total = computed(() => data.value?.total || 0)
 const pages = computed(() => data.value?.pages || 1)
+const estimatedResetAmount = computed(() => {
+  const user = balanceUser.value
+  if (!user || user.daily_amount === null) return null
+  return Math.max(Math.ceil(user.daily_amount - user.balance), 0)
+})
+const canSubmitBalanceOperation = computed(() => {
+  const user = balanceUser.value
+  if (!user) return false
+  if (balanceOperation.value === 'reset') return user.daily_amount !== null
+
+  const amount = amountDraft.value
+  return amount !== null && Number.isFinite(amount) && amount > 0
+})
 
 watch(users, async (loadedUsers) => {
   const requestId = ++dailyUsageRequest
@@ -154,12 +179,12 @@ function getUsageProgress(user: User): UsageProgress {
   }
 }
 
-function getErrorMessage(error: unknown): string {
+function getErrorMessage(error: unknown, fallback = '操作失败'): string {
   if (error && typeof error === 'object' && 'data' in error) {
     const data = error.data as { statusMessage?: string; message?: string }
-    return data.statusMessage || data.message || '重置每日额度失败'
+    return data.statusMessage || data.message || fallback
   }
-  return error instanceof Error ? error.message : '重置每日额度失败'
+  return error instanceof Error ? error.message : fallback
 }
 
 function statusColor(status: string): 'success' | 'error' | 'neutral' {
@@ -168,30 +193,64 @@ function statusColor(status: string): 'success' | 'error' | 'neutral' {
   return 'neutral'
 }
 
-async function resetDailyBalance(user: User) {
-  if (user.daily_amount === null || user.daily_amount === undefined) {
-    resetError.value = `${user.email} 未设置每日金额。`
-    resetMessage.value = ''
+function openBalanceModal(user: User) {
+  balanceUser.value = user
+  balanceOperation.value = 'add'
+  amountDraft.value = user.daily_amount
+  balanceError.value = ''
+  balanceModalOpen.value = true
+}
+
+function selectBalanceOperation(operation: BalanceOperation) {
+  balanceOperation.value = operation
+  balanceError.value = ''
+}
+
+async function submitBalanceOperation() {
+  const user = balanceUser.value
+  const amount = amountDraft.value === null ? null : Math.round(amountDraft.value * 10) / 10
+
+  if (!user) return
+
+  if (balanceOperation.value === 'add' && (amount === null || !Number.isFinite(amount) || amount <= 0)) {
+    balanceError.value = '追加金额必须是大于 0 的数字。'
     return
   }
 
-  resettingEmail.value = user.email
-  resetMessage.value = ''
-  resetError.value = ''
+  if (balanceOperation.value === 'reset' && user.daily_amount === null) {
+    balanceError.value = `${user.email} 未设置每日金额。`
+    return
+  }
+
+  balanceSubmitting.value = true
+  balanceError.value = ''
+  operationMessage.value = ''
 
   try {
-    const result = await $fetch<ResetDailyBalanceResponse>('/api/daily-amounts/reset', {
-      method: 'POST',
-      body: { email: user.email },
-    })
-    resetMessage.value = result.skipped
-      ? `${user.email} 当前余额 ${formatNumber(result.balance)} 已达到每日金额 ${formatDailyAmount(result.target)}。`
-      : `${user.email} 已增加 ${formatNumber(result.amount)}，余额约为 ${formatNumber(result.new_balance)}。`
+    if (balanceOperation.value === 'reset') {
+      const result = await $fetch<ResetDailyBalanceResponse>('/api/daily-amounts/reset', {
+        method: 'POST',
+        body: { email: user.email },
+      })
+      operationMessage.value = result.skipped
+        ? `${user.email} 当前余额 ${formatNumber(result.balance)} 已达到每日金额 ${formatDailyAmount(result.target)}。`
+        : `${user.email} 已增加 ${formatNumber(result.amount)}，余额约为 ${formatNumber(result.new_balance)}。`
+    } else {
+      const result = await $fetch<AddBalanceResponse>(`/api/users/${user.id}/balance`, {
+        method: 'POST',
+        body: { amount },
+      })
+      operationMessage.value = result.new_balance === null
+        ? `${user.email} 已增加 ${formatNumber(result.amount)}。`
+        : `${user.email} 已增加 ${formatNumber(result.amount)}，余额为 ${formatNumber(result.new_balance)}。`
+    }
+
+    balanceModalOpen.value = false
     await refresh()
   } catch (error) {
-    resetError.value = getErrorMessage(error)
+    balanceError.value = getErrorMessage(error, balanceOperation.value === 'reset' ? '重置每日额度失败' : '追加额度失败')
   } finally {
-    resettingEmail.value = ''
+    balanceSubmitting.value = false
   }
 }
 </script>
@@ -219,8 +278,7 @@ async function resetDailyBalance(user: User) {
         </section>
 
         <div class="mb-4 space-y-3">
-          <UAlert v-if="resetError" color="error" variant="subtle" :title="resetError" />
-          <UAlert v-if="resetMessage" color="success" variant="subtle" :title="resetMessage" />
+          <UAlert v-if="operationMessage" color="success" variant="subtle" :title="operationMessage" />
           <UAlert v-if="error" color="error" variant="subtle" :title="`用户列表加载失败：${error.statusMessage || error.message}`" />
         </div>
 
@@ -254,13 +312,78 @@ async function resetDailyBalance(user: User) {
               <template #actions-cell="{ row }">
                 <div class="flex items-center gap-2">
                   <UButton label="设置每日金额" size="xs" color="neutral" variant="outline" :to="{ path: '/daily-amounts', query: { email: row.original.email } }" />
-                  <UButton label="重置每日额度" size="xs" color="primary" :loading="resettingEmail === row.original.email" :disabled="pending || row.original.daily_amount === null" @click="resetDailyBalance(row.original)" />
+                  <UButton label="额度操作" size="xs" color="primary" :disabled="pending || balanceSubmitting" @click="openBalanceModal(row.original)" />
                 </div>
               </template>
               <template #empty><div class="p-10 text-center text-sm text-muted">暂无用户。</div></template>
             </UTable>
           </div>
         </UCard>
+
+        <UModal v-model:open="balanceModalOpen" title="额度操作" :description="balanceUser?.email" :ui="{ footer: 'justify-end' }">
+          <template #body>
+            <form v-if="balanceUser" id="balance-operation-form" class="space-y-5" @submit.prevent="submitBalanceOperation">
+              <div class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p class="text-sm text-muted">当前余额</p>
+                  <p class="mt-1 font-medium text-highlighted tabular-nums">{{ formatNumber(balanceUser.balance) }}</p>
+                </div>
+                <div>
+                  <p class="text-sm text-muted">每日金额</p>
+                  <p class="mt-1 font-medium text-highlighted tabular-nums">{{ formatDailyAmount(balanceUser.daily_amount) }}</p>
+                </div>
+              </div>
+
+              <UFieldGroup class="w-full" aria-label="额度操作类型">
+                <UButton
+                  label="追加额度"
+                  class="flex-1 justify-center"
+                  :color="balanceOperation === 'add' ? 'primary' : 'neutral'"
+                  :variant="balanceOperation === 'add' ? 'solid' : 'outline'"
+                  :aria-pressed="balanceOperation === 'add'"
+                  @click="selectBalanceOperation('add')"
+                />
+                <UButton
+                  label="重置每日额度"
+                  class="flex-1 justify-center"
+                  :color="balanceOperation === 'reset' ? 'primary' : 'neutral'"
+                  :variant="balanceOperation === 'reset' ? 'solid' : 'outline'"
+                  :aria-pressed="balanceOperation === 'reset'"
+                  @click="selectBalanceOperation('reset')"
+                />
+              </UFieldGroup>
+
+              <UAlert v-if="balanceError" color="error" variant="subtle" :title="balanceError" />
+
+              <UFormField v-if="balanceOperation === 'add'" label="追加金额" required>
+                <UInputNumber v-model="amountDraft" :min="0.1" :step="0.1" autofocus class="w-full" />
+              </UFormField>
+
+              <div v-else-if="balanceUser.daily_amount !== null" class="grid gap-4 sm:grid-cols-2">
+                <div>
+                  <p class="text-sm text-muted">目标余额</p>
+                  <p class="mt-1 font-medium text-highlighted tabular-nums">{{ formatDailyAmount(balanceUser.daily_amount) }}</p>
+                </div>
+                <div>
+                  <p class="text-sm text-muted">预计补充</p>
+                  <p class="mt-1 font-medium text-highlighted tabular-nums">{{ formatNumber(estimatedResetAmount) }}</p>
+                </div>
+              </div>
+              <UAlert v-else color="warning" variant="subtle" title="该用户未设置每日金额。" />
+            </form>
+          </template>
+          <template #footer>
+            <UButton label="取消" color="neutral" variant="outline" :disabled="balanceSubmitting" @click="balanceModalOpen = false" />
+            <UButton
+              type="submit"
+              form="balance-operation-form"
+              :label="balanceOperation === 'add' ? '确认追加' : '确认重置'"
+              color="primary"
+              :loading="balanceSubmitting"
+              :disabled="!canSubmitBalanceOperation"
+            />
+          </template>
+        </UModal>
 
         <div class="mt-4 flex justify-end">
           <UPagination v-model:page="page" :total="total" :items-per-page="pageSize" :sibling-count="1" show-edges />
