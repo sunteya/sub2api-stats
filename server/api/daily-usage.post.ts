@@ -57,7 +57,7 @@ export default defineEventHandler(async (event): Promise<{ items: DailyUsageItem
       )
       SELECT
         requested_emails.email,
-        COALESCE(SUM(usage_logs.total_cost), 0)::float8 AS daily_used
+        COALESCE(SUM(usage_logs.actual_cost), 0)::float8 AS daily_used
       FROM requested_emails
       LEFT JOIN users ON lower(users.email) = requested_emails.email AND users.deleted_at IS NULL
       LEFT JOIN usage_logs ON usage_logs.user_id = users.id
